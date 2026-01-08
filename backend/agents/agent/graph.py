@@ -25,7 +25,7 @@ async def call_model(state: State) -> dict[str, list[AIMessage]]:
         dict: A dictionary containing the model's response message.
     """
     # Initialize the model with tool binding. Change the model or add more tools here.
-    model = load_chat_model(settings.OPENAI_GPT4_1).bind_tools(TOOLS)
+    model = load_chat_model(settings.GEMINI_MODEL).bind_tools(TOOLS)
 
     # Format the system prompt. Customize this to change the agent's behavior.
     system_message = ORCHESTRATOR_SYSTEM_PROMPT
@@ -105,3 +105,15 @@ builder.add_edge("tools", "call_model")
 # Compile the builder into an executable graph
 
 graph = builder.compile(name="Mindmap Agent")
+
+if __name__ == "__main__":
+    import asyncio
+    from langchain_core.messages import HumanMessage
+
+    result = asyncio.run(
+        graph.ainvoke(
+            input={"messages": [HumanMessage(content="fastapi architecture")]},
+        )
+    )
+
+    print(result)

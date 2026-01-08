@@ -15,8 +15,7 @@ class Settings(BaseSettings):
     # Database Settings
     DATABASE_URL: str
 
-    OPENAI_GPT4_1: str = "openai/gpt-4.1-mini-2025-04-14"
-    OPENAI_o3_MODEL: str = "openai/o3-2025-04-16"
+    GPT_4_MINI_MODEL: str = "openai/gpt-4.1-mini-2025-04-14"
     GEMINI_MODEL: str = "google-genai/gemini-2.5-flash"
 
     # Models for open router

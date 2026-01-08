@@ -1,40 +1,110 @@
 """
-This module provides tools for the complete blog generation workflow
+This module provides tools for the complete workflow
 """
 
-from typing import Any, Callable
-
-from langgraph.runtime import get_runtime
-
-
 import structlog
+from typing import Any, Callable
+from langchain_core.messages import SystemMessage, HumanMessage
 
-from agents.agent.context import Context
+from agents.agent.prompts import (
+    MINDMAP_PROMPT,
+    SEQUENCE_PROMPT,
+    MODIFICATION_PROMPT,
+    PROMPT,
+)
+from agents.agent.utils import load_chat_model
+from core.config import settings
 
 logger = structlog.getLogger(__name__)
 
-# website_analysis_agent = load_chat_model(settings.GPT_4_MINI_MODEL)
-#     website_summary = await website_analysis_agent.ainvoke(
-#         [
-#             SystemMessage(content=WEBSITE_ANALYSER_PROMPT),
-#             HumanMessage(content=str(website_analyses)),
-#         ]
-#     )
+
+async def create_mindmap(topic: str) -> Any:
+    """Create a mindmap from a topic."""
+
+    mindmap_prompt = MINDMAP_PROMPT.replace("{INSERT_TOPIC_HERE}", topic)
+    agent = load_chat_model(settings.GEMINI_MODEL)
+    logger.info(f"Creating mindmap for {topic}")
+    response = await agent.ainvoke(
+        [
+            SystemMessage(content="Follow the user message"),
+            HumanMessage(content=mindmap_prompt),
+        ]
+    )
+    # Strip markdown code blocks if the model accidentally includes them
+    clean_content = response.content.replace("```json", "").replace("```", "").strip()
+    return clean_content
 
 
-async def search(query: str) -> dict[str, Any] | None:
-    """Search for general web results.
-
-    This function performs a search using the Tavily search engine, which is designed
-    to provide comprehensive, accurate, and trusted results. It's particularly useful
-    for answering questions about current events.
+async def create_sequence_diagram(topic: str) -> Any:
     """
-    runtime = get_runtime(Context)
-    return {
-        "query": query,
-        "max_search_results": runtime.context.max_search_results,
-        "results": f"Simulated search results for '{query}'",
-    }
+    Generates a technical sequence diagram showing interactions between systems and actors.
+    Use this for processes, API flows, login sequences, or transaction logic.
+    """
+
+    sequence_prompt = SEQUENCE_PROMPT.replace("{INSERT_TOPIC_HERE}", topic)
+
+    agent = load_chat_model(settings.GEMINI_MODEL)
+    logger.info(f"Creating sequence diagram for {topic}")
+    response = await agent.ainvoke(
+        [
+            SystemMessage(content="Follow the user message"),
+            HumanMessage(content=sequence_prompt),
+        ]
+    )
+    # Strip markdown code blocks if the model accidentally includes them
+    clean_content = response.content.replace("```json", "").replace("```", "").strip()
+    return clean_content
 
 
-TOOLS: list[Callable[..., Any]] = []
+async def create_knowledge_graph(topic: str) -> Any:
+    """
+    Generates a strict 3-level tree structure (Root -> Category -> Item).
+    Use this for structured datasets, classification, or organized technical stacks.
+    """
+
+    knowledge_graph_prompt = PROMPT.replace("{INSERT_TOPIC_HERE}", topic)
+    agent = load_chat_model(settings.GEMINI_MODEL)
+    logger.info(f"Creating knowledge graph for {topic}")
+    response = await agent.ainvoke(
+        [
+            SystemMessage(content="Follow the user message"),
+            HumanMessage(content=knowledge_graph_prompt),
+        ]
+    )
+    # Strip markdown code blocks if the model accidentally includes them
+    clean_content = response.content.replace("```json", "").replace("```", "").strip()
+    return clean_content
+
+
+async def modify_visualization(current_json: str, request: str) -> Any:
+    """
+    Modifies an existing visualization (Mindmap, Graph, or Sequence).
+    Use this when the user says "Add a node", "Delete the history branch", or "Rename X to Y".
+    Args:
+        current_json: The stringified JSON of the current state.
+        request: The user's change request.
+    """
+    mod_prompt = MODIFICATION_PROMPT.replace(
+        "{INSERT_CURRENT_JSON_DATA_HERE}", str(current_json)
+    )
+    mod_prompt = mod_prompt.replace("{REQUEST}", request)
+
+    agent = load_chat_model(settings.GEMINI_MODEL)
+    logger.info(f"Modifying visualization")
+    response = await agent.ainvoke(
+        [
+            SystemMessage(content="Follow the user message"),
+            HumanMessage(content=mod_prompt),
+        ]
+    )
+    # Strip markdown code blocks if the model accidentally includes them
+    clean_content = response.content.replace("```json", "").replace("```", "").strip()
+    return clean_content
+
+
+TOOLS: list[Callable[..., Any]] = [
+    create_mindmap,
+    modify_visualization,
+    create_sequence_diagram,
+    create_knowledge_graph,
+]

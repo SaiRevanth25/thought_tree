@@ -17,7 +17,7 @@ from models.users import User
 from misc.active_runs import active_runs
 from services.langgraph_service import get_langgraph_service, create_run_config
 from services.streaming_service import streaming_service
-from langchain_core.messages import BaseMessage
+from core.general_serializer import general_serializer
 
 T = TypeVar("T")
 RUN_STREAM_MODES = ["messages", "values", "custom"]
@@ -249,7 +249,7 @@ async def execute_run_async(
             await update_run_status(
                 run_id,
                 "interrupted",
-                output=serialize(final_output) or {},
+                output=final_output or {},
                 session=session,
             )
             if not session:
@@ -263,7 +263,7 @@ async def execute_run_async(
             await update_run_status(
                 run_id,
                 "completed",
-                output=serialize(final_output) or {},
+                output=final_output or {},
                 session=session,
             )
             # Mark thread back to idle
@@ -320,7 +320,16 @@ async def update_run_status(
     try:
         values = {"status": status, "updated_at": datetime.now(timezone.utc)}
         if output is not None:
-            values["output"] = output
+            # Serialize output to ensure JSON compatibility
+            try:
+                serialized_output = general_serializer.serialize(output)
+                values["output"] = serialized_output
+            except Exception as e:
+                logger.warning(f"Failed to serialize output for run {run_id}: {e}")
+                values["output"] = {
+                    "error": "Output serialization failed",
+                    "original_type": str(type(output)),
+                }
         if error is not None:
             values["error_message"] = error
         logger.info(f"[update_run_status] owns_session={owns_session}")
@@ -366,18 +375,3 @@ def _merge_jsonb(*objects: dict) -> dict:
         if obj is not None:
             result.update(copy.deepcopy(obj))
     return result
-
-
-def serialize(obj):
-    if isinstance(obj, BaseMessage):
-        return {
-            "type": obj.__class__.__name__,
-            "content": obj.content,
-            "additional_kwargs": obj.additional_kwargs,
-        }
-    elif isinstance(obj, dict):
-        return {k: serialize(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [serialize(v) for v in obj]
-    else:
-        return obj
