@@ -1,6 +1,10 @@
 # Use a base image with Python
 FROM python:3.13-slim
 
+
+RUN apt-get update \
+    && apt-get -y install libpq-dev gcc
+
 # Install uv
 RUN pip install --no-cache-dir uv
 
@@ -14,7 +18,7 @@ COPY pyproject.toml uv.lock /app/
 RUN uv sync
 
 # Copy the FastAPI application code
-COPY . /app/
+COPY backend /app/
 
 # Expose the port that FastAPI will run on
 EXPOSE 8000
