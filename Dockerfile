@@ -1,27 +1,51 @@
-# Use a base image with Python
+# Stage 1: Build Frontend
+FROM node:20-alpine AS frontend-builder
+
+WORKDIR /app/frontend
+
+# Copy frontend files
+COPY frontend/package*.json ./
+RUN npm ci
+
+# Copy frontend source
+COPY frontend/src ./src
+COPY frontend/index.html ./
+COPY frontend/vite.config.ts ./
+COPY frontend/public ./public
+
+# Build frontend
+RUN npm run build
+
+# Stage 2: Backend with Frontend Assets
 FROM python:3.13-slim
 
-
 RUN apt-get update \
-    && apt-get -y install libpq-dev gcc
+    && apt-get -y install libpq-dev gcc \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install uv
 RUN pip install --no-cache-dir uv
 
-# Set the working directory for the application
+# Set the working directory
 WORKDIR /app
 
-# Copy the requirements file first (to cache dependencies layer)
-COPY pyproject.toml uv.lock /app/
+# Copy Python dependencies
+COPY pyproject.toml uv.lock ./
 
-# Install dependencies
+# Install Python dependencies
 RUN uv sync
 
-# Copy the FastAPI application code
-COPY backend /app/
+# Copy backend code
+COPY backend ./backend
 
-# Expose the port that FastAPI will run on
+# Copy built frontend from builder stage
+COPY --from=frontend-builder /app/frontend/build ./backend/static
+
+# Expose the port
 EXPOSE 8000
 
-# Command to run the app using Uvicorn
+# Set working directory to backend for running the app
+WORKDIR /app/backend
+
+# Command to run the app
 CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

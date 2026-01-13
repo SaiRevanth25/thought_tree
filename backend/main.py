@@ -3,8 +3,11 @@ Main module for Mindmap API.
 """
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
+import os
+from pathlib import Path
 
 from core.database import db_manager
 from services.langgraph_service import get_langgraph_service
@@ -58,19 +61,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
-app.include_router(user_router, prefix="/api", tags=["users"])
-app.include_router(chat_router, prefix="/api", tags=["chats"])
-
-
-@app.get("/")
-async def root():
-    return {"message": "Welcome to Mindmap API"}
-
-
+# Health check endpoint
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+# Include API routers BEFORE mounting static files
+app.include_router(user_router, prefix="/api", tags=["users"])
+app.include_router(chat_router, prefix="/api", tags=["chats"])
+
+# Mount static files (frontend) - LAST, so it acts as a catch-all
+static_dir = Path(__file__).parent / "static"
+if static_dir.exists():
+    app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
+else:
+    logger.warning(f"Static directory not found at {static_dir}")
 
 
 if __name__ == "__main__":
