@@ -2,6 +2,19 @@ import { getToken } from './auth';
 
 const API_BASE_URL = 'http://54.174.78.20:8000/api';
 
+// Utility function to generate UUID (with fallback for browsers that don't support crypto.randomUUID)
+const generateUUID = (): string => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  // Fallback UUID v4 generation
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+};
+
 export interface User {
   email: string;
   name: string;
@@ -264,7 +277,7 @@ export const streamChatMessage = async (
         input: {
           messages: [
             {
-              id: crypto.randomUUID(),
+              id: generateUUID(),
               type: 'human',
               content: [
                 {
