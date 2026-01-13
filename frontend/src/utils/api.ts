@@ -1,6 +1,6 @@
 import { getToken } from './auth';
 
-const API_BASE_URL = 'http://localhost:8000/api';
+const API_BASE_URL = 'http://54.174.78.20:8000/api';
 
 export interface User {
   email: string;
