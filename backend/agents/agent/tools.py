@@ -10,7 +10,8 @@ from agents.agent.prompts import (
     MINDMAP_PROMPT,
     SEQUENCE_PROMPT,
     MODIFICATION_PROMPT,
-    PROMPT,
+    KNOWLEDGE_GRAPH_PROMPT,
+    TIMELINE_PROMPT,
 )
 from agents.agent.utils import load_chat_model
 from core.config import settings
@@ -28,6 +29,23 @@ async def create_mindmap(topic: str) -> Any:
         [
             SystemMessage(content="Follow the user message"),
             HumanMessage(content=mindmap_prompt),
+        ]
+    )
+    # Strip markdown code blocks if the model accidentally includes them
+    clean_content = response.content.replace("```json", "").replace("```", "").strip()
+    return clean_content
+
+
+async def create_timeline(topic: str) -> Any:
+    """Create a timeline for a topic."""
+
+    timeline_prompt = TIMELINE_PROMPT.replace("{INSERT_TOPIC_HERE}", topic)
+    agent = load_chat_model(settings.GEMINI_MODEL)
+    logger.info(f"Creating timeline for {topic}")
+    response = await agent.ainvoke(
+        [
+            SystemMessage(content="Follow the user message"),
+            HumanMessage(content=timeline_prompt),
         ]
     )
     # Strip markdown code blocks if the model accidentally includes them
@@ -62,7 +80,9 @@ async def create_knowledge_graph(topic: str) -> Any:
     Use this for structured datasets, classification, or organized technical stacks.
     """
 
-    knowledge_graph_prompt = PROMPT.replace("{INSERT_TOPIC_HERE}", topic)
+    knowledge_graph_prompt = KNOWLEDGE_GRAPH_PROMPT.replace(
+        "{INSERT_TOPIC_HERE}", topic
+    )
     agent = load_chat_model(settings.GEMINI_MODEL)
     logger.info(f"Creating knowledge graph for {topic}")
     response = await agent.ainvoke(
@@ -107,4 +127,5 @@ TOOLS: list[Callable[..., Any]] = [
     modify_visualization,
     create_sequence_diagram,
     create_knowledge_graph,
+    create_timeline,
 ]
