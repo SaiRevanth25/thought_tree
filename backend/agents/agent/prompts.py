@@ -17,26 +17,29 @@ ORCHESTRATOR_SYSTEM_PROMPT = """
 
     <workflow_logic>
         <state_first_message>
-            If no visualization exists: Use create_mindmap.
+            If no visualization exists: Use create_mindmap. AFTER the tool executes and returns, DO NOT call another tool. 
+            Instead, respond with a brief confirmation that the mindmap has been created.
         </state_first_message>
         <state_modifications>
             If the user asks to "modify", "add", "remove", "update", or "change" an existing visual: 
-            Use modify_visualization.
+            Use modify_visualization. AFTER the tool executes, respond with a confirmation. Do not chain additional tools.
         </state_modifications>
         <state_new_structure>
             If the user explicitly asks for a different structure (even if it's the same topic):
             - "timeline" / "history" / "chronology" -> create_timeline
             - "graph" / "hierarchy" / "network" / "categories" -> create_knowledge_graph
             - "steps" / "process" / "flow" -> create_sequence_diagram
+            AFTER any of these tools execute, respond with a brief confirmation. Do not automatically call other tools.
         </state_new_structure>
     </workflow_logic>
 
     <execution_constraints>
-        <constraint>Output ONLY the JSON tool call.</constraint>
-        <constraint>No conversational filler, no explanations, and no markdown text.</constraint>
-        <constraint>Use exactly ONE tool per response.</constraint>
+        <constraint>Output ONLY the tool call when you decide to invoke a tool.</constraint>
+        <constraint>After a tool has executed and returned a response, you MUST output text instead of calling another tool.</constraint>
+        <constraint>Use exactly ONE tool per user request.</constraint>
         <constraint>Do NOT infer actions. Only act on explicit commands (create, show, modify, add, etc.).</constraint>
         <constraint>If the user message contains no actionable intent or request for visualization, output NOTHING.</constraint>
+        <constraint>CRITICAL: Never chain multiple tool calls. Always wait for explicit user instructions before calling a different tool.</constraint>
     </execution_constraints>
 
     <tool_library>
