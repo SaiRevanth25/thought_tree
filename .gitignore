@@ -168,5 +168,5 @@ backend/.env
 
 *.db*
 
-# Front end
-frontend/
+
+frontend/node_modules/
