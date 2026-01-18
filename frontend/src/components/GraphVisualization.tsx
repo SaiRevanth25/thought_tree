@@ -29,75 +29,186 @@ export function GraphVisualization({ data }: GraphVisualizationProps) {
     if (!data || !data.nodes || !data.edges) return;
 
     const positions: Record<string, NodePosition> = {};
-    const width = 1000;
-    const height = 600;
-    const padding = 100;
+    const width = 1200;
+    const height = 800;
+    const padding = 120;
 
-    // Force-directed layout simulation (simplified)
-    // Initialize random positions
-    data.nodes.forEach((node, index) => {
-      const angle = (index / data.nodes.length) * 2 * Math.PI;
-      const radius = 250;
-      positions[node.id] = {
-        x: width / 2 + Math.cos(angle) * radius,
-        y: height / 2 + Math.sin(angle) * radius
-      };
+    // Check if graph is hierarchical (knowledge graph structure)
+    const rootNode = data.nodes.find(n => n.data.type === 'root' || n.data.type === 'data');
+    const hasHierarchy = rootNode !== undefined;
+    
+    // Build hierarchy maps
+    const childrenMap: Record<string, string[]> = {};
+    const parentMap: Record<string, string> = {};
+    const nodeDepths: Record<string, number> = {};
+    
+    data.edges.forEach(edge => {
+      if (!childrenMap[edge.source]) {
+        childrenMap[edge.source] = [];
+      }
+      childrenMap[edge.source].push(edge.target);
+      parentMap[edge.target] = edge.source;
     });
 
-    // Simple force-directed adjustment
-    for (let iteration = 0; iteration < 50; iteration++) {
-      const forces: Record<string, { x: number; y: number }> = {};
-      
-      // Initialize forces
-      data.nodes.forEach(node => {
-        forces[node.id] = { x: 0, y: 0 };
+    // If hierarchical, use tree layout
+    if (hasHierarchy && rootNode) {
+      // Calculate depths
+      const calculateDepths = (nodeId: string, depth: number) => {
+        nodeDepths[nodeId] = depth;
+        const children = childrenMap[nodeId] || [];
+        children.forEach(childId => {
+          calculateDepths(childId, depth + 1);
+        });
+      };
+      calculateDepths(rootNode.id, 0);
+
+      // Find max depth
+      const maxDepth = Math.max(...Object.values(nodeDepths));
+      const levelHeight = maxDepth > 0 ? (height - 2 * padding) / maxDepth : height - 2 * padding;
+
+      // Tree layout: position nodes by level
+      const levelNodes: Record<number, string[]> = {};
+      Object.entries(nodeDepths).forEach(([nodeId, depth]) => {
+        if (!levelNodes[depth]) {
+          levelNodes[depth] = [];
+        }
+        levelNodes[depth].push(nodeId);
       });
 
-      // Repulsive forces between all nodes
-      data.nodes.forEach((node1, i) => {
-        data.nodes.forEach((node2, j) => {
-          if (i >= j) return;
-          
-          const pos1 = positions[node1.id];
-          const pos2 = positions[node2.id];
-          const dx = pos2.x - pos1.x;
-          const dy = pos2.y - pos1.y;
-          const distance = Math.sqrt(dx * dx + dy * dy) || 1;
-          const force = 1000 / (distance * distance);
-          
-          forces[node1.id].x -= (dx / distance) * force;
-          forces[node1.id].y -= (dy / distance) * force;
-          forces[node2.id].x += (dx / distance) * force;
-          forces[node2.id].y += (dy / distance) * force;
+      // Position nodes level by level
+      Object.entries(levelNodes).forEach(([depthStr, nodeIds]) => {
+        const depth = parseInt(depthStr);
+        const levelY = padding + depth * levelHeight;
+        const levelWidth = width - 2 * padding;
+        const nodeSpacing = levelWidth / (nodeIds.length + 1);
+
+        nodeIds.forEach((nodeId, index) => {
+          positions[nodeId] = {
+            x: padding + (index + 1) * nodeSpacing,
+            y: levelY
+          };
         });
       });
 
-      // Attractive forces along edges
-      data.edges.forEach(edge => {
-        const pos1 = positions[edge.source];
-        const pos2 = positions[edge.target];
-        if (!pos1 || !pos2) return;
-        
-        const dx = pos2.x - pos1.x;
-        const dy = pos2.y - pos1.y;
-        const distance = Math.sqrt(dx * dx + dy * dy) || 1;
-        const force = distance * 0.01;
-        
-        forces[edge.source].x += (dx / distance) * force;
-        forces[edge.source].y += (dy / distance) * force;
-        forces[edge.target].x -= (dx / distance) * force;
-        forces[edge.target].y -= (dy / distance) * force;
+      // Adjust for better spacing - center children under parents
+      const adjustPositions = (nodeId: string) => {
+        const children = childrenMap[nodeId] || [];
+        if (children.length === 0) return;
+
+        const parentX = positions[nodeId].x;
+        const childrenX = children.reduce((sum, childId) => sum + positions[childId].x, 0) / children.length;
+        const offset = parentX - childrenX;
+
+        children.forEach(childId => {
+          positions[childId].x += offset;
+          adjustPositions(childId);
+        });
+      };
+
+      // Adjust positions to center children under parents
+      if (rootNode) {
+        adjustPositions(rootNode.id);
+      }
+    } else {
+      // Force-directed layout for non-hierarchical graphs
+      const minDistance = 80;
+      const repulsionStrength = 2000;
+      const attractionStrength = 0.02;
+      const maxIterations = 300;
+      const convergenceThreshold = 0.01;
+
+      // Initialize positions in a circle
+      data.nodes.forEach((node, index) => {
+        const angle = (index / data.nodes.length) * 2 * Math.PI;
+        const radius = Math.min(width, height) * 0.3;
+        positions[node.id] = {
+          x: width / 2 + Math.cos(angle) * radius,
+          y: height / 2 + Math.sin(angle) * radius
+        };
       });
 
-      // Apply forces
-      data.nodes.forEach(node => {
-        positions[node.id].x += forces[node.id].x * 0.1;
-        positions[node.id].y += forces[node.id].y * 0.1;
+      // Force-directed simulation with convergence detection
+      let previousMaxForce = Infinity;
+      
+      for (let iteration = 0; iteration < maxIterations; iteration++) {
+        const forces: Record<string, { x: number; y: number }> = {};
         
-        // Keep within bounds
-        positions[node.id].x = Math.max(padding, Math.min(width - padding, positions[node.id].x));
-        positions[node.id].y = Math.max(padding, Math.min(height - padding, positions[node.id].y));
-      });
+        // Initialize forces
+        data.nodes.forEach(node => {
+          forces[node.id] = { x: 0, y: 0 };
+        });
+
+        // Repulsive forces between all nodes
+        data.nodes.forEach((node1, i) => {
+          data.nodes.forEach((node2, j) => {
+            if (i >= j) return;
+            
+            const pos1 = positions[node1.id];
+            const pos2 = positions[node2.id];
+            const dx = pos2.x - pos1.x;
+            const dy = pos2.y - pos1.y;
+            const distance = Math.sqrt(dx * dx + dy * dy) || 0.1;
+            
+            // Only apply repulsion if nodes are too close
+            if (distance < minDistance * 2) {
+              const force = repulsionStrength / (distance * distance);
+              const unitX = dx / distance;
+              const unitY = dy / distance;
+              
+              forces[node1.id].x -= unitX * force;
+              forces[node1.id].y -= unitY * force;
+              forces[node2.id].x += unitX * force;
+              forces[node2.id].y += unitY * force;
+            }
+          });
+        });
+
+        // Attractive forces along edges
+        data.edges.forEach(edge => {
+          const pos1 = positions[edge.source];
+          const pos2 = positions[edge.target];
+          if (!pos1 || !pos2) return;
+          
+          const dx = pos2.x - pos1.x;
+          const dy = pos2.y - pos1.y;
+          const distance = Math.sqrt(dx * dx + dy * dy) || 0.1;
+          const idealDistance = minDistance * 1.5;
+          const force = (distance - idealDistance) * attractionStrength;
+          const unitX = dx / distance;
+          const unitY = dy / distance;
+          
+          forces[edge.source].x += unitX * force;
+          forces[edge.source].y += unitY * force;
+          forces[edge.target].x -= unitX * force;
+          forces[edge.target].y -= unitY * force;
+        });
+
+        // Calculate cooling factor (simulated annealing)
+        const coolingFactor = 1 - (iteration / maxIterations) * 0.9;
+        const stepSize = 0.1 * coolingFactor;
+
+        // Apply forces and calculate max force for convergence
+        let maxForce = 0;
+        data.nodes.forEach(node => {
+          const forceX = forces[node.id].x;
+          const forceY = forces[node.id].y;
+          const forceMagnitude = Math.sqrt(forceX * forceX + forceY * forceY);
+          maxForce = Math.max(maxForce, forceMagnitude);
+
+          positions[node.id].x += forceX * stepSize;
+          positions[node.id].y += forceY * stepSize;
+          
+          // Keep within bounds
+          positions[node.id].x = Math.max(padding, Math.min(width - padding, positions[node.id].x));
+          positions[node.id].y = Math.max(padding, Math.min(height - padding, positions[node.id].y));
+        });
+
+        // Check for convergence
+        if (iteration > 50 && Math.abs(previousMaxForce - maxForce) < convergenceThreshold) {
+          break;
+        }
+        previousMaxForce = maxForce;
+      }
     }
 
     setNodePositions(positions);

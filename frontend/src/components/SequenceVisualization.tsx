@@ -57,6 +57,8 @@ export function SequenceVisualization({ data }: SequenceVisualizationProps) {
     const sequenceData = data as any;
     const participants = sequenceData.participants || [];
     const events = sequenceData.events || [];
+    const activations = sequenceData.activations || [];
+    const fragments = sequenceData.fragments || [];
     
     if (participants.length === 0 || events.length === 0) {
       return (
@@ -66,12 +68,17 @@ export function SequenceVisualization({ data }: SequenceVisualizationProps) {
       );
     }
 
-    const boxWidth = 160;
+    // Calculate dynamic spacing based on participant labels
+    const calculateLabelWidth = (label: string) => label.length * 7;
+    const maxLabelWidth = Math.max(...participants.map((p: any) => calculateLabelWidth(p.label)));
+    const boxWidth = Math.max(160, maxLabelWidth + 40);
     const boxHeight = 60;
     const topSpacing = 100;
-    const eventSpacing = 60;
+    const eventSpacing = 70;
+    const participantSpacing = Math.max(180, boxWidth + 40);
     const startX = 80;
     const startY = topSpacing;
+    const lifelineEndY = startY + boxHeight + (events.length * eventSpacing) + 100;
 
     return (
       <div className="h-full relative bg-slate-900 rounded-lg overflow-hidden">
@@ -104,26 +111,38 @@ export function SequenceVisualization({ data }: SequenceVisualizationProps) {
             >
               <polygon points="0 0, 10 3, 0 6" fill="#10b981" />
             </marker>
+            <marker
+              id="seq-arrowhead-open"
+              markerWidth="10"
+              markerHeight="10"
+              refX="9"
+              refY="3"
+              orient="auto"
+            >
+              <path d="M 0 0 L 10 3 L 0 6" fill="none" stroke="#10b981" strokeWidth="2" />
+            </marker>
           </defs>
 
           <g transform={`translate(${pan.x}, ${pan.y}) scale(${scale})`}>
             {/* Draw participant boxes at top */}
             {participants.map((participant: any, index: number) => {
-              const x = startX + index * (boxWidth + 50);
+              const x = startX + index * participantSpacing;
               const y = startY;
               const isActor = participant.type === 'Actor';
+              const participantX = x + boxWidth / 2;
 
               return (
                 <g key={participant.id}>
-                  {/* Participant line going down */}
+                  {/* Participant lifeline going down */}
                   <line
-                    x1={x + boxWidth / 2}
+                    x1={participantX}
                     y1={y + boxHeight}
-                    x2={x + boxWidth / 2}
-                    y2={startY + (events.length * eventSpacing) + 50}
+                    x2={participantX}
+                    y2={lifelineEndY}
                     stroke="#10b981"
                     strokeWidth="2"
                     strokeDasharray="5,5"
+                    opacity="0.6"
                   />
 
                   {/* Participant box */}
@@ -154,6 +173,101 @@ export function SequenceVisualization({ data }: SequenceVisualizationProps) {
               );
             })}
 
+            {/* Draw fragments (alt, loop, opt boxes) */}
+            {fragments.map((fragment: any) => {
+              const startEvent = events.find((e: any) => e.step === fragment.startStep);
+              const endEvent = events.find((e: any) => e.step === fragment.endStep);
+              
+              if (!startEvent || !endEvent) return null;
+
+              const fragmentStartY = startY + boxHeight + ((startEvent.step - 1) * eventSpacing) + 30;
+              const fragmentEndY = startY + boxHeight + ((endEvent.step - 1) * eventSpacing) + 30;
+              const fragmentHeight = fragmentEndY - fragmentStartY;
+              
+              // Find leftmost and rightmost participants involved
+              const involvedParticipants = new Set<string>();
+              events.forEach((e: any) => {
+                if (e.step >= fragment.startStep && e.step <= fragment.endStep) {
+                  involvedParticipants.add(e.source);
+                  involvedParticipants.add(e.target);
+                }
+              });
+              
+              const participantIndices = Array.from(involvedParticipants).map((pid: string) => 
+                participants.findIndex((p: any) => p.id === pid)
+              ).filter(idx => idx >= 0);
+              
+              if (participantIndices.length === 0) return null;
+              
+              const leftmostX = startX + Math.min(...participantIndices) * participantSpacing;
+              const rightmostX = startX + Math.max(...participantIndices) * participantSpacing + boxWidth;
+              const fragmentWidth = rightmostX - leftmostX;
+
+              const fragmentColors: Record<string, string> = {
+                alt: '#f59e0b',
+                loop: '#8b5cf6',
+                opt: '#06b6d4'
+              };
+              const fragmentColor = fragmentColors[fragment.type] || '#64748b';
+
+              return (
+                <g key={`fragment-${fragment.startStep}-${fragment.endStep}`}>
+                  {/* Fragment box */}
+                  <rect
+                    x={leftmostX}
+                    y={fragmentStartY - 20}
+                    width={fragmentWidth}
+                    height={fragmentHeight + 40}
+                    fill="none"
+                    stroke={fragmentColor}
+                    strokeWidth="2"
+                    opacity="0.3"
+                  />
+                  {/* Fragment label */}
+                  <text
+                    x={leftmostX + 10}
+                    y={fragmentStartY - 5}
+                    fill={fragmentColor}
+                    fontSize="11"
+                    fontWeight="bold"
+                    style={{ pointerEvents: 'none' }}
+                  >
+                    {fragment.type.toUpperCase()}: {fragment.label || fragment.condition}
+                  </text>
+                </g>
+              );
+            })}
+
+            {/* Draw activation bars */}
+            {activations.map((activation: any) => {
+              const participant = participants.find((p: any) => p.id === activation.participant);
+              if (!participant) return null;
+
+              const participantIndex = participants.indexOf(participant);
+              const participantX = startX + participantIndex * participantSpacing + boxWidth / 2;
+              
+              const startEvent = events.find((e: any) => e.step === activation.startStep);
+              const endEvent = events.find((e: any) => e.step === activation.endStep);
+              
+              if (!startEvent || !endEvent) return null;
+
+              const activationStartY = startY + boxHeight + ((startEvent.step - 1) * eventSpacing) + 30;
+              const activationEndY = startY + boxHeight + ((endEvent.step - 1) * eventSpacing) + 30;
+              const activationWidth = 8;
+
+              return (
+                <rect
+                  key={`activation-${activation.participant}-${activation.startStep}`}
+                  x={participantX - activationWidth / 2}
+                  y={activationStartY}
+                  width={activationWidth}
+                  height={activationEndY - activationStartY}
+                  fill="#10b981"
+                  opacity="0.6"
+                />
+              );
+            })}
+
             {/* Draw sequence events */}
             {events.map((event: any, index: number) => {
               const sourceParticipant = participants.find((p: any) => p.id === event.source);
@@ -164,39 +278,68 @@ export function SequenceVisualization({ data }: SequenceVisualizationProps) {
               const sourceIndex = participants.indexOf(sourceParticipant);
               const targetIndex = participants.indexOf(targetParticipant);
               
-              const x1 = startX + sourceIndex * (boxWidth + 50) + boxWidth / 2;
-              const x2 = startX + targetIndex * (boxWidth + 50) + boxWidth / 2;
-              const y = startY + boxHeight + (index * eventSpacing) + 30;
+              const x1 = startX + sourceIndex * participantSpacing + boxWidth / 2;
+              const x2 = startX + targetIndex * participantSpacing + boxWidth / 2;
+              const y = startY + boxHeight + ((event.step - 1) * eventSpacing) + 30;
 
               const isHovered = hoveredNode === event.id;
+              const isReturn = event.lineType === 'dotted' || event.arrowType === 'open_arrow';
+              const isSelfMessage = sourceIndex === targetIndex;
 
               return (
-                <g key={event.id}>
-                  {/* Arrow */}
-                  <line
-                    x1={Math.min(x1, x2)}
-                    y1={y}
-                    x2={Math.max(x1, x2)}
-                    y2={y}
-                    stroke={isHovered ? '#fbbf24' : '#10b981'}
-                    strokeWidth={isHovered ? 3 : 2}
-                    markerEnd="url(#seq-arrowhead)"
-                  />
-
-                  {/* Event label */}
-                  <text
-                    x={(x1 + x2) / 2}
-                    y={y - 8}
-                    textAnchor="middle"
-                    fill={isHovered ? '#fbbf24' : '#10b981'}
-                    fontSize="12"
-                    fontWeight="bold"
-                    onMouseEnter={() => setHoveredNode(event.id)}
-                    onMouseLeave={() => setHoveredNode(null)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    {event.label}
-                  </text>
+                <g key={event.id || `event-${event.step}`}>
+                  {isSelfMessage ? (
+                    // Self message (loop back)
+                    <g>
+                      <path
+                        d={`M ${x1} ${y} Q ${x1 + 30} ${y - 20} ${x1} ${y - 20} Q ${x1 - 30} ${y - 20} ${x1} ${y}`}
+                        fill="none"
+                        stroke={isHovered ? '#fbbf24' : '#10b981'}
+                        strokeWidth={isHovered ? 3 : 2}
+                        strokeDasharray={isReturn ? "5,5" : "none"}
+                        markerEnd={isReturn ? "url(#seq-arrowhead-open)" : "url(#seq-arrowhead)"}
+                      />
+                      <text
+                        x={x1 + 35}
+                        y={y - 25}
+                        fill={isHovered ? '#fbbf24' : '#10b981'}
+                        fontSize="12"
+                        fontWeight="bold"
+                        onMouseEnter={() => setHoveredNode(event.id || `event-${event.step}`)}
+                        onMouseLeave={() => setHoveredNode(null)}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        {event.label}
+                      </text>
+                    </g>
+                  ) : (
+                    // Regular message
+                    <g>
+                      <line
+                        x1={x1}
+                        y1={y}
+                        x2={x2}
+                        y2={y}
+                        stroke={isHovered ? '#fbbf24' : '#10b981'}
+                        strokeWidth={isHovered ? 3 : 2}
+                        strokeDasharray={isReturn ? "5,5" : "none"}
+                        markerEnd={isReturn ? "url(#seq-arrowhead-open)" : "url(#seq-arrowhead)"}
+                      />
+                      <text
+                        x={(x1 + x2) / 2}
+                        y={y - 8}
+                        textAnchor="middle"
+                        fill={isHovered ? '#fbbf24' : '#10b981'}
+                        fontSize="12"
+                        fontWeight="bold"
+                        onMouseEnter={() => setHoveredNode(event.id || `event-${event.step}`)}
+                        onMouseLeave={() => setHoveredNode(null)}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        {event.label}
+                      </text>
+                    </g>
+                  )}
                 </g>
               );
             })}
