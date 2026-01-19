@@ -2248,11 +2248,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/88/43/1c586f9f413765201234541857cb82fda076f4b0f7bad4a0ec248da39cf3/sentry_sdk-2.49.0-py2.py3-none-any.whl", hash = "sha256:6ea78499133874445a20fe9c826c9e960070abeb7ae0cdf930314ab16bb97aa0", size = 415693, upload-time = "2026-01-08T09:56:21.872Z" },
 ]
 
-[package.optional-dependencies]
-fastapi = [
-    { name = "fastapi" },
-]
-
 [[package]]
 name = "sgmllib3k"
 version = "1.0.0"
@@ -2372,7 +2367,6 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "pyjwt" },
     { name = "ruff" },
-    { name = "sentry-sdk", extra = ["fastapi"] },
     { name = "sqlalchemy" },
     { name = "structlog" },
 ]
@@ -2401,7 +2395,6 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.11.0" },
     { name = "pyjwt", specifier = ">=2.10.1" },
     { name = "ruff", specifier = ">=0.14.5" },
-    { name = "sentry-sdk", extras = ["fastapi"], specifier = ">=2.49.0" },
     { name = "sqlalchemy", specifier = ">=2.0.44" },
     { name = "structlog", specifier = ">=25.5.0" },
 ]

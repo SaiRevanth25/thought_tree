@@ -28,5 +28,4 @@ dependencies = [
     "sqlalchemy>=2.0.44",
     "structlog>=25.5.0",
     "psycopg2-binary>=2.9.11",
-    "sentry-sdk[fastapi]>=2.49.0",
 ]

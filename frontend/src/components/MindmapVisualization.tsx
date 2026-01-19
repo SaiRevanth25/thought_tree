@@ -37,15 +37,10 @@ export function MindmapVisualization({ data }: MindmapVisualizationProps) {
     if (!data || !data.nodes) return;
 
     const positions: Record<string, NodePosition> = {};
-    const centerX = 600;
-    const centerY = 400;
-    
-    // Adaptive spacing based on node count
-    const nodeCount = data.nodes.length;
-    const baseLevelDistance = 180;
-    const adaptiveLevelDistance = baseLevelDistance + (nodeCount * 3);
-    const minNodeRadius = 50;
-    const nodePadding = 20;
+    const centerX = 500;
+    const centerY = 300;
+    const levelDistance = 200;
+    const nodeSpacing = 150;
 
     // Find root node
     const rootNode = data.nodes.find(n => n.data.type === 'root');
@@ -54,108 +49,42 @@ export function MindmapVisualization({ data }: MindmapVisualizationProps) {
     // Position root at center
     positions[rootNode.id] = { x: centerX, y: centerY };
 
-    // Build hierarchy with depth calculation
+    // Build hierarchy
     const childrenMap: Record<string, string[]> = {};
-    const parentMap: Record<string, string> = {};
-    const nodeDepths: Record<string, number> = { [rootNode.id]: 0 };
-    
     if (data.edges) {
       data.edges.forEach(edge => {
         if (!childrenMap[edge.source]) {
           childrenMap[edge.source] = [];
         }
         childrenMap[edge.source].push(edge.target);
-        parentMap[edge.target] = edge.source;
       });
     }
 
-    // Calculate depths using BFS
-    const depthQueue: Array<{ id: string; depth: number }> = [{ id: rootNode.id, depth: 0 }];
-    const depthVisited = new Set<string>();
-    let maxDepth = 0;
+    // Position nodes level by level using BFS
+    const queue: Array<{ id: string; level: number; angle: number }> = [
+      { id: rootNode.id, level: 0, angle: 0 }
+    ];
+    const visited = new Set<string>();
 
-    while (depthQueue.length > 0) {
-      const { id, depth } = depthQueue.shift()!;
-      if (depthVisited.has(id)) continue;
-      depthVisited.add(id);
-      
-      nodeDepths[id] = depth;
-      maxDepth = Math.max(maxDepth, depth);
+    while (queue.length > 0) {
+      const { id, level, angle } = queue.shift()!;
+      if (visited.has(id)) continue;
+      visited.add(id);
 
       const children = childrenMap[id] || [];
-      children.forEach(childId => {
-        if (!depthVisited.has(childId)) {
-          depthQueue.push({ id: childId, depth: depth + 1 });
-        }
-      });
-    }
-
-    // Calculate sector angles for each node's children
-    const calculateSectorAngles = (parentId: string, startAngle: number, sectorWidth: number): void => {
-      const children = childrenMap[parentId] || [];
-      if (children.length === 0) return;
-
-      const childCount = children.length;
-      const angleStep = sectorWidth / childCount;
-      const minAngleStep = (2 * Math.PI) / 32; // Minimum angle to prevent clustering
-      const actualAngleStep = Math.max(angleStep, minAngleStep);
-      const actualSectorWidth = actualAngleStep * childCount;
-
-      // Center the sector
-      const sectorStartAngle = startAngle - actualSectorWidth / 2;
+      const angleStep = children.length > 1 ? (2 * Math.PI) / children.length : Math.PI / 4;
 
       children.forEach((childId, index) => {
-        const childAngle = sectorStartAngle + (index + 0.5) * actualAngleStep;
-        const level = nodeDepths[childId] || 1;
-        const distance = adaptiveLevelDistance * level;
+        const childAngle = angle + (index - children.length / 2) * angleStep;
+        const distance = levelDistance * (level + 1);
         
-        let x = centerX + Math.cos(childAngle) * distance;
-        let y = centerY + Math.sin(childAngle) * distance;
+        positions[childId] = {
+          x: centerX + Math.cos(childAngle) * distance,
+          y: centerY + Math.sin(childAngle) * distance
+        };
 
-        // Collision detection and adjustment
-        const maxCollisionChecks = 10;
-        let collisionCheckCount = 0;
-        let hasCollision = true;
-
-        while (hasCollision && collisionCheckCount < maxCollisionChecks) {
-          hasCollision = false;
-          
-          // Check collision with existing nodes
-          for (const [existingId, existingPos] of Object.entries(positions)) {
-            if (existingId === childId) continue;
-            
-            const dx = x - existingPos.x;
-            const dy = y - existingPos.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            const minDistance = (minNodeRadius + nodePadding) * 2;
-
-            if (distance < minDistance) {
-              hasCollision = true;
-              // Push away from collision
-              const angle = Math.atan2(dy, dx);
-              const pushDistance = minDistance - distance + 5;
-              x += Math.cos(angle) * pushDistance;
-              y += Math.sin(angle) * pushDistance;
-              break;
-            }
-          }
-
-          collisionCheckCount++;
-        }
-
-        positions[childId] = { x, y };
-
-        // Recursively position children with sector-based distribution
-        const childSectorWidth = actualAngleStep * 0.8; // Slightly narrower sector for children
-        calculateSectorAngles(childId, childAngle, childSectorWidth);
+        queue.push({ id: childId, level: level + 1, angle: childAngle });
       });
-    };
-
-    // Start positioning from root
-    const rootChildren = childrenMap[rootNode.id] || [];
-    if (rootChildren.length > 0) {
-      const rootSectorWidth = (2 * Math.PI) / Math.max(rootChildren.length, 1);
-      calculateSectorAngles(rootNode.id, 0, rootSectorWidth);
     }
 
     setNodePositions(positions);

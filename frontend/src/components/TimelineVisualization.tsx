@@ -67,38 +67,11 @@ export function TimelineVisualization({ data }: TimelineVisualizationProps) {
 
     const hoveredNodeData = hoveredNode ? timelineNodes.find((n: any) => n.name === hoveredNode) : null;
 
-    // Calculate dynamic spacing and sizing based on content
-    const calculateContentHeight = (event: any) => {
-      const nameHeight = 20;
-      const summaryHeight = event.summary ? 40 : 0;
-      const descriptionHeight = event.description ? 30 : 0;
-      const padding = 40;
-      return Math.max(100, nameHeight + summaryHeight + descriptionHeight + padding);
-    };
-
-    const eventHeights = timelineNodes.map((event: any) => calculateContentHeight(event));
-    const maxEventHeight = Math.max(...eventHeights, 100);
-    const baseSpacing = 50;
-    const adaptiveSpacing = baseSpacing + (timelineNodes.length > 10 ? 10 : 0);
-    
-    const itemHeight = maxEventHeight;
-    const spacing = adaptiveSpacing;
-    const startX = 200;
-    const startY = 80;
-    const lineX = startX + 30;
-    const boxWidth = 320;
-    const boxOffset = 60;
-
-    // Calculate cumulative Y positions to avoid overlaps
-    const eventPositions = timelineNodes.map((event: any, index: number) => {
-      const eventHeight = eventHeights[index];
-      const previousY = index === 0 ? startY : eventPositions[index - 1].y + eventPositions[index - 1].height + spacing;
-      return {
-        y: previousY,
-        height: eventHeight,
-        isLeft: index % 2 === 0
-      };
-    });
+    const itemHeight = 120;
+    const spacing = 40;
+    const startX = 150;
+    const startY = 100;
+    const lineX = startX + 20;
 
     return (
       <div className="h-full relative bg-slate-900 rounded-lg overflow-hidden">
@@ -126,9 +99,7 @@ export function TimelineVisualization({ data }: TimelineVisualizationProps) {
               x1={lineX}
               y1={startY}
               x2={lineX}
-              y2={eventPositions.length > 0 
-                ? eventPositions[eventPositions.length - 1].y + eventPositions[eventPositions.length - 1].height + 20
-                : startY + 100}
+              y2={startY + timelineNodes.length * (itemHeight + spacing)}
               stroke="#f97316"
               strokeWidth="4"
               opacity="0.6"
@@ -136,18 +107,16 @@ export function TimelineVisualization({ data }: TimelineVisualizationProps) {
 
             {/* Draw timeline events */}
             {timelineNodes.map((event: any, index: number) => {
-              const position = eventPositions[index];
-              const y = position.y;
-              const eventHeight = position.height;
+              const y = startY + index * (itemHeight + spacing);
               const isHovered = hoveredNode === event.name;
-              const isLeft = position.isLeft;
+              const isLeft = index % 2 === 0;
 
               return (
                 <g key={`${event.name}-${index}`}>
                   {/* Timeline dot */}
                   <circle
                     cx={lineX}
-                    cy={y + eventHeight / 2}
+                    cy={y + itemHeight / 2}
                     r="12"
                     fill={isHovered ? '#f97316' : '#ea580c'}
                     stroke="#fff"
@@ -157,9 +126,9 @@ export function TimelineVisualization({ data }: TimelineVisualizationProps) {
                   {/* Connection line to event box */}
                   <line
                     x1={lineX}
-                    y1={y + eventHeight / 2}
-                    x2={isLeft ? lineX - boxOffset : lineX + boxOffset}
-                    y2={y + eventHeight / 2}
+                    y1={y + itemHeight / 2}
+                    x2={isLeft ? lineX - 50 : lineX + 50}
+                    y2={y + itemHeight / 2}
                     stroke="#f97316"
                     strokeWidth="2"
                     opacity="0.6"
@@ -167,10 +136,10 @@ export function TimelineVisualization({ data }: TimelineVisualizationProps) {
 
                   {/* Event box */}
                   <rect
-                    x={isLeft ? lineX - boxWidth - boxOffset : lineX + boxOffset}
+                    x={isLeft ? lineX - 350 : lineX + 50}
                     y={y}
-                    width={boxWidth}
-                    height={eventHeight}
+                    width="300"
+                    height={itemHeight}
                     rx="8"
                     fill={isHovered ? '#ea580c' : '#f97316'}
                     stroke={isHovered ? '#fff' : '#c2410c'}
@@ -181,53 +150,47 @@ export function TimelineVisualization({ data }: TimelineVisualizationProps) {
                     style={{ cursor: 'pointer' }}
                   />
 
-                  {/* Year/era badge */}
+                  {/* Year badge */}
                   <circle
-                    cx={isLeft ? lineX - boxWidth - boxOffset + 25 : lineX + boxOffset + 25}
+                    cx={isLeft ? lineX - 330 : lineX + 70}
                     cy={y + 25}
-                    r="16"
+                    r="15"
                     fill="#c2410c"
                   />
                   <text
-                    x={isLeft ? lineX - boxWidth - boxOffset + 25 : lineX + boxOffset + 25}
+                    x={isLeft ? lineX - 330 : lineX + 70}
                     y={y + 32}
                     textAnchor="middle"
                     fill="#fff"
-                    fontSize="11"
+                    fontSize="12"
                     fontWeight="bold"
-                    style={{ pointerEvents: 'none' }}
                   >
-                    {event.year || event.era || (index + 1)}
+                    {event.year}
                   </text>
 
                   {/* Event title */}
                   <text
-                    x={isLeft ? lineX - boxWidth / 2 - boxOffset : lineX + boxWidth / 2 + boxOffset}
-                    y={y + 55}
+                    x={isLeft ? lineX - 200 : lineX + 200}
+                    y={y + 40}
                     textAnchor="middle"
                     fill="#fff"
-                    fontSize="15"
+                    fontSize="14"
                     fontWeight="bold"
                     style={{ pointerEvents: 'none' }}
                   >
-                    {event.name.length > 35
-                      ? `${event.name.substring(0, 35)}...`
-                      : event.name}
+                    {event.name}
                   </text>
 
-                  {/* Event summary */}
-                  {event.summary && (
+                  {/* Event summary (shown on hover) */}
+                  {isHovered && event.summary && (
                     <foreignObject
-                      x={isLeft ? lineX - boxWidth - boxOffset + 15 : lineX + boxOffset + 15}
-                      y={y + 70}
-                      width={boxWidth - 30}
-                      height={eventHeight - 80}
+                      x={isLeft ? lineX - 340 : lineX + 60}
+                      y={y + 10}
+                      width="280"
+                      height={itemHeight - 20}
                     >
-                      <div className="text-xs text-gray-100 leading-relaxed">
-                        <p className="font-semibold mb-1">{event.summary}</p>
-                        {event.description && (
-                          <p className="text-gray-300 text-xs">{event.description}</p>
-                        )}
+                      <div className="p-2 text-xs text-gray-100 overflow-hidden">
+                        <p className="font-bold">{event.summary}</p>
                       </div>
                     </foreignObject>
                   )}
@@ -422,6 +385,19 @@ export function TimelineVisualization({ data }: TimelineVisualizationProps) {
                   </text>
                 )}
 
+                {/* Clock icon */}
+                <g transform={`translate(${isLeft ? lineX - 320 : lineX + 80}, ${y + 70})`}>
+                  <circle r="8" fill="#c2410c" />
+                  <text
+                    textAnchor="middle"
+                    dy="3"
+                    fill="white"
+                    fontSize="10"
+                    style={{ pointerEvents: 'none', userSelect: 'none' }}
+                  >
+                    ⏱
+                  </text>
+                </g>
               </g>
             );
           })}
