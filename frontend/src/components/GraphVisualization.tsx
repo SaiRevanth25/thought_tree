@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Maximize2, Minimize2, ZoomIn } from 'lucide-react';
+import { Maximize2, Minimize2, ZoomIn, Plus, Minus } from 'lucide-react';
 import type { VisualizationData } from '../utils/api';
 
 interface GraphVisualizationProps {
@@ -29,76 +29,68 @@ export function GraphVisualization({ data }: GraphVisualizationProps) {
     if (!data || !data.nodes || !data.edges) return;
 
     const positions: Record<string, NodePosition> = {};
-    const width = 1000;
-    const height = 600;
-    const padding = 100;
+    const width = 1400;
+    const height = 850;
+    const padding = 140;
 
-    // Force-directed layout simulation (simplified)
-    // Initialize random positions
-    data.nodes.forEach((node, index) => {
-      const angle = (index / data.nodes.length) * 2 * Math.PI;
-      const radius = 250;
-      positions[node.id] = {
-        x: width / 2 + Math.cos(angle) * radius,
-        y: height / 2 + Math.sin(angle) * radius
-      };
+    // Build adjacency map and in-degree count
+    const childrenMap: Record<string, string[]> = {};
+    const inDegree: Record<string, number> = {};
+    
+    data.nodes.forEach(node => {
+      inDegree[node.id] = 0;
     });
 
-    // Simple force-directed adjustment
-    for (let iteration = 0; iteration < 50; iteration++) {
-      const forces: Record<string, { x: number; y: number }> = {};
-      
-      // Initialize forces
-      data.nodes.forEach(node => {
-        forces[node.id] = { x: 0, y: 0 };
-      });
+    data.edges.forEach(edge => {
+      if (!childrenMap[edge.source]) {
+        childrenMap[edge.source] = [];
+      }
+      childrenMap[edge.source].push(edge.target);
+      inDegree[edge.target]++;
+    });
 
-      // Repulsive forces between all nodes
-      data.nodes.forEach((node1, i) => {
-        data.nodes.forEach((node2, j) => {
-          if (i >= j) return;
-          
-          const pos1 = positions[node1.id];
-          const pos2 = positions[node2.id];
-          const dx = pos2.x - pos1.x;
-          const dy = pos2.y - pos1.y;
-          const distance = Math.sqrt(dx * dx + dy * dy) || 1;
-          const force = 1000 / (distance * distance);
-          
-          forces[node1.id].x -= (dx / distance) * force;
-          forces[node1.id].y -= (dy / distance) * force;
-          forces[node2.id].x += (dx / distance) * force;
-          forces[node2.id].y += (dy / distance) * force;
-        });
-      });
+    // Find root node (node with no incoming edges or marked as root)
+    let rootNode = data.nodes.find(n => n.data.type === 'root');
+    if (!rootNode) {
+      const rootCandidates = data.nodes.filter(n => inDegree[n.id] === 0);
+      rootNode = rootCandidates[0] || data.nodes[0];
+    }
 
-      // Attractive forces along edges
-      data.edges.forEach(edge => {
-        const pos1 = positions[edge.source];
-        const pos2 = positions[edge.target];
-        if (!pos1 || !pos2) return;
-        
-        const dx = pos2.x - pos1.x;
-        const dy = pos2.y - pos1.y;
-        const distance = Math.sqrt(dx * dx + dy * dy) || 1;
-        const force = distance * 0.01;
-        
-        forces[edge.source].x += (dx / distance) * force;
-        forces[edge.source].y += (dy / distance) * force;
-        forces[edge.target].x -= (dx / distance) * force;
-        forces[edge.target].y -= (dy / distance) * force;
-      });
+    // Hierarchical layout using BFS
+    const levels: Record<number, string[]> = {};
+    const queue: Array<{ id: string; level: number }> = [{ id: rootNode.id, level: 0 }];
+    const visited = new Set<string>();
 
-      // Apply forces
-      data.nodes.forEach(node => {
-        positions[node.id].x += forces[node.id].x * 0.1;
-        positions[node.id].y += forces[node.id].y * 0.1;
-        
-        // Keep within bounds
-        positions[node.id].x = Math.max(padding, Math.min(width - padding, positions[node.id].x));
-        positions[node.id].y = Math.max(padding, Math.min(height - padding, positions[node.id].y));
+    while (queue.length > 0) {
+      const { id, level } = queue.shift()!;
+      if (visited.has(id)) continue;
+      visited.add(id);
+
+      if (!levels[level]) levels[level] = [];
+      levels[level].push(id);
+
+      const children = childrenMap[id] || [];
+      children.forEach(childId => {
+        queue.push({ id: childId, level: level + 1 });
       });
     }
+
+    // Position nodes by level
+    const levelCount = Object.keys(levels).length;
+    const verticalSpacing = Math.min(170, (height - 2 * padding) / Math.max(levelCount, 1));
+
+    Object.entries(levels).forEach(([levelStr, nodeIds]) => {
+      const level = parseInt(levelStr);
+      const y = padding + 50 + level * verticalSpacing;
+      const nodesInLevel = nodeIds.length;
+      const availableWidth = width - 2 * padding;
+      const horizontalSpacing = availableWidth / (nodesInLevel + 1);
+
+      nodeIds.forEach((nodeId, index) => {
+        const x = padding + horizontalSpacing * (index + 1);
+        positions[nodeId] = { x, y };
+      });
+    });
 
     setNodePositions(positions);
   };
@@ -106,6 +98,14 @@ export function GraphVisualization({ data }: GraphVisualizationProps) {
   const handleFitView = () => {
     setScale(1);
     setPan({ x: 0, y: 0 });
+  };
+
+  const handleZoomIn = () => {
+    setScale(prev => Math.min(prev * 1.2, 5));
+  };
+
+  const handleZoomOut = () => {
+    setScale(prev => Math.max(prev / 1.2, 0.1));
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -147,8 +147,22 @@ export function GraphVisualization({ data }: GraphVisualizationProps) {
     <div className="h-full relative bg-slate-900 rounded-lg overflow-hidden">
       <div className="absolute top-4 left-4 z-10 flex gap-2 flex-wrap">
         <button 
+          onClick={handleZoomIn} 
+          className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 flex items-center gap-2 shadow-lg"
+        >
+          <Plus className="w-4 h-4" />
+          Zoom In
+        </button>
+        <button 
+          onClick={handleZoomOut} 
+          className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 flex items-center gap-2 shadow-lg"
+        >
+          <Minus className="w-4 h-4" />
+          Zoom Out
+        </button>
+        <button 
           onClick={handleFitView} 
-          className="px-3 py-2 bg-pink-600 text-white rounded-lg text-sm hover:bg-pink-700 flex items-center gap-2"
+          className="px-3 py-2 bg-pink-600 text-white rounded-lg text-sm hover:bg-pink-700 flex items-center gap-2 shadow-lg"
         >
           <ZoomIn className="w-4 h-4" />
           Fit View
@@ -172,8 +186,11 @@ export function GraphVisualization({ data }: GraphVisualizationProps) {
             refY="3"
             orient="auto"
           >
-            <polygon points="0 0, 10 3, 0 6" fill="#64748b" />
+            <polygon points="0 0, 10 3, 0 6" fill="#a78bfa" />
           </marker>
+          <filter id="graph-shadow">
+            <feDropShadow dx="0" dy="2" stdDeviation="3" floodOpacity="0.4" />
+          </filter>
         </defs>
 
         <g transform={`translate(${pan.x}, ${pan.y}) scale(${scale})`}>
@@ -190,23 +207,26 @@ export function GraphVisualization({ data }: GraphVisualizationProps) {
             const length = Math.sqrt(dx * dx + dy * dy);
             const unitX = dx / length;
             const unitY = dy / length;
-            const radius = 40;
+            const radius = 45;
             
+            const startX = sourcePos.x + unitX * radius;
+            const startY = sourcePos.y + unitY * radius;
             const endX = targetPos.x - unitX * radius;
             const endY = targetPos.y - unitY * radius;
 
             return (
-              <line
-                key={edge.id}
-                x1={sourcePos.x}
-                y1={sourcePos.y}
-                x2={endX}
-                y2={endY}
-                stroke="#64748b"
-                strokeWidth="2"
-                opacity="0.6"
-                markerEnd="url(#arrowhead)"
-              />
+              <g key={edge.id}>
+                <line
+                  x1={startX}
+                  y1={startY}
+                  x2={endX}
+                  y2={endY}
+                  stroke="#a78bfa"
+                  strokeWidth="2.5"
+                  opacity="0.45"
+                  markerEnd="url(#arrowhead)"
+                />
+              </g>
             );
           })}
 
@@ -216,7 +236,21 @@ export function GraphVisualization({ data }: GraphVisualizationProps) {
             if (!pos) return null;
 
             const isRoot = node.data.type === 'root';
-            const radius = 40;
+            const isCategory = node.data.type === 'category';
+            const radius = isRoot ? 50 : isCategory ? 42 : 38;
+            let bgColor = '#8b5cf6';
+            let borderColor = '#a78bfa';
+            
+            if (isRoot) {
+              bgColor = '#8b5cf6';
+              borderColor = '#c084fc';
+            } else if (isCategory) {
+              bgColor = '#0ea5e9';
+              borderColor = '#06b6d4';
+            } else {
+              bgColor = '#10b981';
+              borderColor = '#34d399';
+            }
 
             return (
               <g
@@ -229,23 +263,24 @@ export function GraphVisualization({ data }: GraphVisualizationProps) {
                 {/* Node circle */}
                 <circle
                   r={radius}
-                  fill={isRoot ? '#8b5cf6' : node.data.type === 'category' ? '#3b82f6' : '#10b981'}
-                  stroke={hoveredNode === node.id ? '#fff' : '#1e293b'}
-                  strokeWidth="3"
-                  opacity="0.9"
+                  fill={bgColor}
+                  stroke={hoveredNode === node.id ? '#fff' : borderColor}
+                  strokeWidth={hoveredNode === node.id ? '3' : '2'}
+                  opacity={hoveredNode === node.id ? "1" : "0.9"}
+                  filter="url(#graph-shadow)"
                 />
                 
                 {/* Node label */}
                 <text
                   textAnchor="middle"
-                  dy="5"
+                  dy="6"
                   fill="white"
-                  fontSize="12"
-                  fontWeight={isRoot ? "bold" : "normal"}
-                  style={{ pointerEvents: 'none', userSelect: 'none' }}
+                  fontSize={isRoot ? "13" : "12"}
+                  fontWeight={isRoot ? "700" : "600"}
+                  style={{ pointerEvents: 'none', userSelect: 'none', letterSpacing: '-0.3px' }}
                 >
-                  {node.data.label.length > 12 
-                    ? `${node.data.label.substring(0, 12)}...` 
+                  {node.data.label.length > 14
+                    ? `${node.data.label.substring(0, 14)}...` 
                     : node.data.label}
                 </text>
               </g>

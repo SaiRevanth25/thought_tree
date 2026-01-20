@@ -45,13 +45,21 @@ export const getToken = (): string | null => {
 export const removeToken = () => {
   try {
     if (isLocalStorageAvailable()) {
-      localStorage.removeItem(TOKEN_KEY);
+      try {
+        localStorage.removeItem(TOKEN_KEY);
+      } catch (storageError) {
+        console.warn('localStorage removal failed, using memory:', storageError);
+        delete memoryStorage[TOKEN_KEY];
+      }
     } else {
       delete memoryStorage[TOKEN_KEY];
     }
   } catch (e) {
     console.warn('Failed to remove token:', e);
-    delete memoryStorage[TOKEN_KEY];
+    // Fallback: always ensure memory storage is cleared
+    if (memoryStorage[TOKEN_KEY]) {
+      delete memoryStorage[TOKEN_KEY];
+    }
   }
 };
 

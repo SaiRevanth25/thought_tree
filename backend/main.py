@@ -3,11 +3,9 @@ Main module for Mindmap API.
 """
 
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
-import os
-from pathlib import Path
+import sentry_sdk
 
 from core.database import db_manager
 from services.langgraph_service import get_langgraph_service
@@ -26,6 +24,24 @@ async def startup_event():
 
     # Startup: Initialize database and LangGraph components
     await db_manager.initialize()
+
+    sentry_sdk.init(
+        dsn="https://5abcd86bc88e67c95c74bb4fcfab2b18@o4510726618939392.ingest.us.sentry.io/4510726621626368",
+        # Add data like request headers and IP for users,
+        # see https://docs.sentry.io/platforms/python/data-management/data-collected/ for more info
+        send_default_pii=True,
+        # Enable sending logs to Sentry
+        enable_logs=True,
+        # Set traces_sample_rate to 1.0 to capture 100%
+        # of transactions for tracing.
+        traces_sample_rate=1.0,
+        # Set profile_session_sample_rate to 1.0 to profile 100%
+        # of profile sessions.
+        profile_session_sample_rate=1.0,
+        # Set profile_lifecycle to "trace" to automatically
+        # run the profiler on when there is an active transaction
+        profile_lifecycle="trace",
+    )
 
     langgraph_service = get_langgraph_service()
     await langgraph_service.initialize()
@@ -66,16 +82,9 @@ app.add_middleware(
 def health():
     return {"status": "ok"}
 
-# Include API routers BEFORE mounting static files
+# Include API routers
 app.include_router(user_router, prefix="/api", tags=["users"])
 app.include_router(chat_router, prefix="/api", tags=["chats"])
-
-# Mount static files (frontend) - LAST, so it acts as a catch-all
-static_dir = Path(__file__).parent / "static"
-if static_dir.exists():
-    app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
-else:
-    logger.warning(f"Static directory not found at {static_dir}")
 
 
 if __name__ == "__main__":

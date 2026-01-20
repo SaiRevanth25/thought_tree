@@ -86,8 +86,12 @@ export function ChatPage() {
   };
 
   const handleLogout = () => {
-    removeToken();
-    navigate('/');
+    try {
+      removeToken();
+    } catch (error) {
+      console.warn('Token removal error:', error);
+    }
+    navigate('/', { replace: true });
   };
 
   const handleNewChat = async () => {

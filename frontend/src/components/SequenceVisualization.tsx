@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ZoomIn, ArrowRight } from 'lucide-react';
+import { ZoomIn, ArrowRight, Plus, Minus } from 'lucide-react';
 import type { VisualizationData } from '../utils/api';
 
 interface SequenceVisualizationProps {
@@ -16,6 +16,14 @@ export function SequenceVisualization({ data }: SequenceVisualizationProps) {
   const handleFitView = () => {
     setScale(1);
     setPan({ x: 0, y: 0 });
+  };
+
+  const handleZoomIn = () => {
+    setScale(prev => Math.min(prev * 1.2, 5));
+  };
+
+  const handleZoomOut = () => {
+    setScale(prev => Math.max(prev / 1.2, 0.1));
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -66,19 +74,38 @@ export function SequenceVisualization({ data }: SequenceVisualizationProps) {
       );
     }
 
-    const boxWidth = 160;
-    const boxHeight = 60;
-    const topSpacing = 100;
-    const eventSpacing = 60;
-    const startX = 80;
+    const boxWidth = 200;
+    const boxHeight = 90;
+    const topSpacing = 140;
+    const eventSpacing = 90;
+    const startX = 100;
     const startY = topSpacing;
 
     return (
-      <div className="h-full relative bg-slate-900 rounded-lg overflow-hidden">
+      <div className="h-full relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-lg overflow-hidden">
+        <div className="absolute inset-0 opacity-40">
+          <div className="absolute top-0 left-0 w-96 h-96 bg-blue-500 rounded-full mix-blend-screen filter blur-3xl opacity-10"></div>
+          <div className="absolute bottom-0 right-0 w-96 h-96 bg-cyan-500 rounded-full mix-blend-screen filter blur-3xl opacity-10"></div>
+        </div>
+        
         <div className="absolute top-4 left-4 z-10 flex gap-2 flex-wrap">
           <button 
+            onClick={handleZoomIn} 
+            className="px-3 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-lg text-sm hover:from-blue-700 hover:to-cyan-700 flex items-center gap-2 shadow-lg"
+          >
+            <Plus className="w-4 h-4" />
+            Zoom In
+          </button>
+          <button 
+            onClick={handleZoomOut} 
+            className="px-3 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-lg text-sm hover:from-blue-700 hover:to-cyan-700 flex items-center gap-2 shadow-lg"
+          >
+            <Minus className="w-4 h-4" />
+            Zoom Out
+          </button>
+          <button 
             onClick={handleFitView} 
-            className="px-3 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 flex items-center gap-2"
+            className="px-3 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-lg text-sm hover:from-blue-700 hover:to-cyan-700 flex items-center gap-2 shadow-lg"
           >
             <ZoomIn className="w-4 h-4" />
             Fit View
@@ -102,8 +129,11 @@ export function SequenceVisualization({ data }: SequenceVisualizationProps) {
               refY="3"
               orient="auto"
             >
-              <polygon points="0 0, 10 3, 0 6" fill="#10b981" />
+              <polygon points="0 0, 10 3, 0 6" fill="#0ea5e9" />
             </marker>
+            <filter id="seq-shadow">
+              <feDropShadow dx="0" dy="3" stdDeviation="4" floodOpacity="0.3" />
+            </filter>
           </defs>
 
           <g transform={`translate(${pan.x}, ${pan.y}) scale(${scale})`}>
@@ -120,10 +150,11 @@ export function SequenceVisualization({ data }: SequenceVisualizationProps) {
                     x1={x + boxWidth / 2}
                     y1={y + boxHeight}
                     x2={x + boxWidth / 2}
-                    y2={startY + (events.length * eventSpacing) + 50}
-                    stroke="#10b981"
-                    strokeWidth="2"
-                    strokeDasharray="5,5"
+                    y2={startY + (events.length * eventSpacing) + 60}
+                    stroke="#0ea5e9"
+                    strokeWidth="2.5"
+                    strokeDasharray="10,5"
+                    opacity="0.4"
                   />
 
                   {/* Participant box */}
@@ -132,20 +163,22 @@ export function SequenceVisualization({ data }: SequenceVisualizationProps) {
                     y={y}
                     width={boxWidth}
                     height={boxHeight}
-                    rx="4"
-                    fill={isActor ? '#06b6d4' : '#10b981'}
-                    stroke="#fff"
-                    strokeWidth="2"
+                    rx="12"
+                    fill={isActor ? '#0369a1' : '#0ea5e9'}
+                    stroke={isActor ? '#06b6d4' : '#0ea5e9'}
+                    strokeWidth="3"
+                    opacity="0.95"
+                    filter="url(#seq-shadow)"
                   />
 
                   {/* Participant label */}
                   <text
                     x={x + boxWidth / 2}
-                    y={y + boxHeight / 2 + 5}
+                    y={y + boxHeight / 2 + 8}
                     textAnchor="middle"
                     fill="#fff"
-                    fontSize="12"
-                    fontWeight="bold"
+                    fontSize="15"
+                    fontWeight="700"
                     style={{ pointerEvents: 'none' }}
                   >
                     {participant.label}
@@ -178,22 +211,35 @@ export function SequenceVisualization({ data }: SequenceVisualizationProps) {
                     y1={y}
                     x2={Math.max(x1, x2)}
                     y2={y}
-                    stroke={isHovered ? '#fbbf24' : '#10b981'}
-                    strokeWidth={isHovered ? 3 : 2}
+                    stroke={isHovered ? '#06b6d4' : '#0ea5e9'}
+                    strokeWidth={isHovered ? 4 : 3.5}
                     markerEnd="url(#seq-arrowhead)"
+                    opacity={isHovered ? 0.95 : 0.7}
+                    style={{ transition: 'all 0.2s ease' }}
+                  />
+
+                  {/* Event label background */}
+                  <rect
+                    x={(x1 + x2) / 2 - 70}
+                    y={y - 28}
+                    width="140"
+                    height="24"
+                    rx="6"
+                    fill={isHovered ? '#0369a1' : '#0ea5e9'}
+                    opacity={isHovered ? '0.95' : '0.8'}
                   />
 
                   {/* Event label */}
                   <text
                     x={(x1 + x2) / 2}
-                    y={y - 8}
+                    y={y - 10}
                     textAnchor="middle"
-                    fill={isHovered ? '#fbbf24' : '#10b981'}
-                    fontSize="12"
-                    fontWeight="bold"
+                    fill="#fff"
+                    fontSize="13"
+                    fontWeight="700"
                     onMouseEnter={() => setHoveredNode(event.id)}
                     onMouseLeave={() => setHoveredNode(null)}
-                    style={{ cursor: 'pointer' }}
+                    style={{ cursor: 'pointer', pointerEvents: 'none' }}
                   >
                     {event.label}
                   </text>
@@ -250,11 +296,11 @@ export function SequenceVisualization({ data }: SequenceVisualizationProps) {
   const hoveredNodeData = hoveredNode ? data.nodes.find((n) => n.id === hoveredNode) : null;
   
   // Define dimensions for fallback rendering
-  const fallbackBoxWidth = 160;
-  const fallbackBoxHeight = 60;
-  const fallbackTopSpacing = 100;
-  const fallbackEventSpacing = 60;
-  const fallbackStartX = 80;
+  const fallbackBoxWidth = 180;
+  const fallbackBoxHeight = 75;
+  const fallbackTopSpacing = 120;
+  const fallbackEventSpacing = 75;
+  const fallbackStartX = 120;
   const fallbackStartY = fallbackTopSpacing;
 
   return (
@@ -316,8 +362,8 @@ export function SequenceVisualization({ data }: SequenceVisualizationProps) {
                 <rect
                   x={x}
                   y={y}
-                  width={boxWidth}
-                  height={boxHeight}
+                  width={fallbackBoxWidth}
+                  height={fallbackBoxHeight}
                   rx="8"
                   fill={isHovered ? '#059669' : '#10b981'}
                   stroke={isHovered ? '#fff' : '#047857'}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Maximize2, Minimize2, ZoomIn, Download } from 'lucide-react';
+import { Maximize2, Minimize2, ZoomIn, Download, Plus, Minus } from 'lucide-react';
 import type { VisualizationData } from '../utils/api';
 
 interface MindmapVisualizationProps {
@@ -37,10 +37,8 @@ export function MindmapVisualization({ data }: MindmapVisualizationProps) {
     if (!data || !data.nodes) return;
 
     const positions: Record<string, NodePosition> = {};
-    const centerX = 500;
-    const centerY = 300;
-    const levelDistance = 200;
-    const nodeSpacing = 150;
+    const centerX = 700;
+    const centerY = 400;
 
     // Find root node
     const rootNode = data.nodes.find(n => n.data.type === 'root');
@@ -51,6 +49,8 @@ export function MindmapVisualization({ data }: MindmapVisualizationProps) {
 
     // Build hierarchy
     const childrenMap: Record<string, string[]> = {};
+    const nodeLevel: Record<string, number> = {};
+    
     if (data.edges) {
       data.edges.forEach(edge => {
         if (!childrenMap[edge.source]) {
@@ -60,32 +60,86 @@ export function MindmapVisualization({ data }: MindmapVisualizationProps) {
       });
     }
 
-    // Position nodes level by level using BFS
-    const queue: Array<{ id: string; level: number; angle: number }> = [
-      { id: rootNode.id, level: 0, angle: 0 }
-    ];
-    const visited = new Set<string>();
+    // Calculate level for each node using BFS
+    nodeLevel[rootNode.id] = 0;
+    const queue = [rootNode.id];
+    let queueIndex = 0;
 
-    while (queue.length > 0) {
-      const { id, level, angle } = queue.shift()!;
-      if (visited.has(id)) continue;
-      visited.add(id);
-
-      const children = childrenMap[id] || [];
-      const angleStep = children.length > 1 ? (2 * Math.PI) / children.length : Math.PI / 4;
-
-      children.forEach((childId, index) => {
-        const childAngle = angle + (index - children.length / 2) * angleStep;
-        const distance = levelDistance * (level + 1);
-        
-        positions[childId] = {
-          x: centerX + Math.cos(childAngle) * distance,
-          y: centerY + Math.sin(childAngle) * distance
-        };
-
-        queue.push({ id: childId, level: level + 1, angle: childAngle });
+    while (queueIndex < queue.length) {
+      const nodeId = queue[queueIndex++];
+      const children = childrenMap[nodeId] || [];
+      
+      children.forEach(childId => {
+        if (nodeLevel[childId] === undefined) {
+          nodeLevel[childId] = nodeLevel[nodeId] + 1;
+          queue.push(childId);
+        }
       });
     }
+
+    // Group nodes by level
+    const levelNodes: Record<number, string[]> = {};
+    queue.forEach(nodeId => {
+      const level = nodeLevel[nodeId];
+      if (!levelNodes[level]) levelNodes[level] = [];
+      levelNodes[level].push(nodeId);
+    });
+
+    // Increased distance multiplier for each level - much more spacing
+    const baseDistance = 280;
+    const levelDistances: Record<number, number> = {};
+    Object.keys(levelNodes).forEach(levelStr => {
+      const level = parseInt(levelStr);
+      levelDistances[level] = baseDistance + level * 280;
+    });
+
+    // Position nodes - each level gets distributed around a circle
+    Object.entries(levelNodes).forEach(([levelStr, nodeIds]) => {
+      const level = parseInt(levelStr);
+      const distance = levelDistances[level];
+
+      if (level === 0) {
+        // Root already positioned
+        return;
+      }
+
+      // Group nodes by parent for better organization
+      const nodesByParent: Record<string, string[]> = {};
+      nodeIds.forEach(nodeId => {
+        const parentId = Object.keys(childrenMap).find(parent =>
+          childrenMap[parent].includes(nodeId)
+        );
+        if (parentId) {
+          if (!nodesByParent[parentId]) nodesByParent[parentId] = [];
+          nodesByParent[parentId].push(nodeId);
+        }
+      });
+
+      // Position each node based on parent's angle
+      Object.entries(nodesByParent).forEach(([parentId, children]) => {
+        const parentPos = positions[parentId];
+        if (!parentPos) return;
+
+        // Calculate angle from root to parent
+        const dx = parentPos.x - centerX;
+        const dy = parentPos.y - centerY;
+        const parentAngle = Math.atan2(dy, dx);
+
+        // Increased angle spread for siblings - much wider distribution
+        const angleSpread = Math.PI / 2; // ±90 degrees from parent direction
+        const angleStep = angleSpread / Math.max(children.length - 1, 1);
+
+        children.forEach((childId, index) => {
+          // Position along parent's ray with larger offset
+          const childAngle = parentAngle + (index - children.length / 2) * angleStep * 0.8;
+          
+          const childX = centerX + Math.cos(childAngle) * distance;
+          const childY = centerY + Math.sin(childAngle) * distance;
+          
+          positions[childId] = { x: childX, y: childY };
+        });
+      });
+    });
 
     setNodePositions(positions);
   };
@@ -103,6 +157,14 @@ export function MindmapVisualization({ data }: MindmapVisualizationProps) {
   const handleFitView = () => {
     setScale(1);
     setPan({ x: 0, y: 0 });
+  };
+
+  const handleZoomIn = () => {
+    setScale(prev => Math.min(prev * 1.2, 5));
+  };
+
+  const handleZoomOut = () => {
+    setScale(prev => Math.max(prev / 1.2, 0.1));
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -167,25 +229,44 @@ export function MindmapVisualization({ data }: MindmapVisualizationProps) {
   };
 
   return (
-    <div className="h-full relative bg-slate-900 rounded-lg overflow-hidden">
+    <div className="h-full relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-lg overflow-hidden">
+      <div className="absolute inset-0 opacity-40">
+        <div className="absolute top-0 left-1/4 w-96 h-96 bg-purple-500 rounded-full mix-blend-screen filter blur-3xl opacity-10"></div>
+        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-pink-500 rounded-full mix-blend-screen filter blur-3xl opacity-10"></div>
+      </div>
+      
       <div className="absolute top-4 left-4 z-10 flex gap-2 flex-wrap">
         <button 
           onClick={handleExpandAll} 
-          className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 flex items-center gap-2"
+          className="px-3 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg text-sm hover:from-purple-700 hover:to-pink-700 flex items-center gap-2 shadow-lg"
         >
           <Maximize2 className="w-4 h-4" />
           Expand All
         </button>
         <button 
           onClick={handleCollapseAll} 
-          className="px-3 py-2 bg-orange-600 text-white rounded-lg text-sm hover:bg-orange-700 flex items-center gap-2"
+          className="px-3 py-2 bg-gradient-to-r from-orange-600 to-red-600 text-white rounded-lg text-sm hover:from-orange-700 hover:to-red-700 flex items-center gap-2 shadow-lg"
         >
           <Minimize2 className="w-4 h-4" />
           Collapse All
         </button>
         <button 
+          onClick={handleZoomIn} 
+          className="px-3 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-lg text-sm hover:from-blue-700 hover:to-cyan-700 flex items-center gap-2 shadow-lg"
+        >
+          <Plus className="w-4 h-4" />
+          Zoom In
+        </button>
+        <button 
+          onClick={handleZoomOut} 
+          className="px-3 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-lg text-sm hover:from-blue-700 hover:to-cyan-700 flex items-center gap-2 shadow-lg"
+        >
+          <Minus className="w-4 h-4" />
+          Zoom Out
+        </button>
+        <button 
           onClick={handleFitView} 
-          className="px-3 py-2 bg-pink-600 text-white rounded-lg text-sm hover:bg-pink-700 flex items-center gap-2"
+          className="px-3 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-lg text-sm hover:from-blue-700 hover:to-cyan-700 flex items-center gap-2 shadow-lg"
         >
           <ZoomIn className="w-4 h-4" />
           Fit View
@@ -200,8 +281,14 @@ export function MindmapVisualization({ data }: MindmapVisualizationProps) {
         onMouseLeave={handleMouseUp}
         onWheel={handleWheel}
       >
+        <defs>
+          <filter id="mindmap-shadow">
+            <feDropShadow dx="0" dy="2" stdDeviation="3" floodOpacity="0.4" />
+          </filter>
+        </defs>
+
         <g transform={`translate(${pan.x}, ${pan.y}) scale(${scale})`}>
-          {/* Draw edges */}
+          {/* Draw edges with curved paths */}
           {data.edges?.map((edge) => {
             const sourcePos = nodePositions[edge.source];
             const targetPos = nodePositions[edge.target];
@@ -210,16 +297,33 @@ export function MindmapVisualization({ data }: MindmapVisualizationProps) {
               return null;
             }
 
+            // Create quadratic bezier curve for smooth edges
+            const midX = (sourcePos.x + targetPos.x) / 2;
+            const midY = (sourcePos.y + targetPos.y) / 2;
+            
+            // Curve control point - pull towards center to create flowing branches
+            const centerX = 700;
+            const centerY = 400;
+            const dx = targetPos.x - sourcePos.x;
+            const dy = targetPos.y - sourcePos.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            // Control point distance based on edge length
+            const controlDistance = distance * 0.3;
+            const angle = Math.atan2(dy, dx);
+            const perpAngle = angle + Math.PI / 2;
+            
+            const controlX = midX + Math.cos(perpAngle) * controlDistance * 0.3;
+            const controlY = midY + Math.sin(perpAngle) * controlDistance * 0.3;
+
             return (
-              <line
+              <path
                 key={edge.id}
-                x1={sourcePos.x}
-                y1={sourcePos.y}
-                x2={targetPos.x}
-                y2={targetPos.y}
-                stroke="#475569"
-                strokeWidth="2"
-                opacity="0.6"
+                d={`M ${sourcePos.x} ${sourcePos.y} Q ${controlX} ${controlY} ${targetPos.x} ${targetPos.y}`}
+                stroke="#a78bfa"
+                strokeWidth="2.5"
+                opacity="0.35"
+                fill="none"
               />
             );
           })}
@@ -230,7 +334,9 @@ export function MindmapVisualization({ data }: MindmapVisualizationProps) {
             if (!pos || !expandedNodes.has(node.id)) return null;
 
             const isRoot = node.data.type === 'root';
-            const radius = isRoot ? 60 : 50;
+            const radius = isRoot ? 85 : 65;
+            const bgColor = isRoot ? '#8b5cf6' : '#a78bfa';
+            const borderColor = isRoot ? '#c084fc' : '#e9d5ff';
 
             return (
               <g
@@ -241,32 +347,28 @@ export function MindmapVisualization({ data }: MindmapVisualizationProps) {
                 onClick={() => toggleNode(node.id)}
                 style={{ cursor: 'pointer' }}
               >
-                {/* Node circle with gradient */}
-                <defs>
-                  <linearGradient id={`gradient-${node.id}`} x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" className={getNodeColor(node.data.type)} stopColor="#8b5cf6" />
-                    <stop offset="100%" className={getNodeColor(node.data.type)} stopColor="#ec4899" />
-                  </linearGradient>
-                </defs>
+                {/* Node circle */}
                 <circle
                   r={radius}
-                  fill={`url(#gradient-${node.id})`}
-                  stroke={hoveredNode === node.id ? '#fff' : 'none'}
-                  strokeWidth="3"
-                  opacity="0.9"
+                  fill={bgColor}
+                  stroke={hoveredNode === node.id ? '#fff' : borderColor}
+                  strokeWidth={hoveredNode === node.id ? "4" : "2.5"}
+                  opacity={hoveredNode === node.id ? "1" : "0.92"}
+                  filter="url(#mindmap-shadow)"
+                  style={{ transition: 'all 0.2s ease' }}
                 />
                 
                 {/* Node label */}
                 <text
                   textAnchor="middle"
-                  dy="5"
+                  dy="6"
                   fill="white"
-                  fontSize={isRoot ? "14" : "12"}
-                  fontWeight={isRoot ? "bold" : "normal"}
+                  fontSize={isRoot ? "15" : "13"}
+                  fontWeight={isRoot ? "bold" : "600"}
                   style={{ pointerEvents: 'none', userSelect: 'none' }}
                 >
-                  {node.data.label.length > 15 
-                    ? `${node.data.label.substring(0, 15)}...` 
+                  {node.data.label.length > 16 
+                    ? `${node.data.label.substring(0, 16)}...` 
                     : node.data.label}
                 </text>
               </g>
