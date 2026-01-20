@@ -7,10 +7,12 @@ WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
 
-# Copy frontend source
+# Copy frontend source and config
 COPY frontend/src ./src
 COPY frontend/index.html ./
 COPY frontend/vite.config.ts ./
+COPY frontend/tsconfig.json ./
+COPY frontend/tsconfig.node.json ./
 COPY frontend/public ./public
 
 # Build frontend
