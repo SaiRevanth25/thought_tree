@@ -32,5 +32,28 @@ class Settings(BaseSettings):
     ENV_MODE: str = "LOCAL"
     LOG_LEVEL: str = "INFO"
 
+    # File upload settings
+    MAX_UPLOAD_FILES: int = 3
+    MAX_FILE_SIZE_MB: int = 10
+    ALLOWED_MIME_TYPES: list[str] = [
+        "application/pdf",
+        "text/plain",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "text/markdown",
+    ]
+
+    # Chunking settings
+    CHUNK_SIZE: int = 1000  # tokens
+    CHUNK_OVERLAP: int = 200  # tokens
+
+    # Embedding settings
+    OPENAI_API_KEY: str = ""
+    EMBEDDING_MODEL: str = "text-embedding-3-small"
+    EMBEDDING_DIMENSION: int = 1536
+
+    # RAG settings
+    TOP_K_RESULTS: int = 3
+    SIMILARITY_THRESHOLD: float = 0.5
+
 
 settings = Settings()

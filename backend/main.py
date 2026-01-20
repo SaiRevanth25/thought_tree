@@ -12,6 +12,7 @@ from services.langgraph_service import get_langgraph_service
 
 from api.user_routes import router as user_router
 from api.chat_routes import router as chat_router
+from api.file_routes import router as file_router
 
 import logging
 
@@ -85,6 +86,7 @@ def health():
 # Include API routers
 app.include_router(user_router, prefix="/api", tags=["users"])
 app.include_router(chat_router, prefix="/api", tags=["chats"])
+app.include_router(file_router, prefix="/api", tags=["files"])
 
 
 if __name__ == "__main__":

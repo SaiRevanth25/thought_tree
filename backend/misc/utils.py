@@ -17,6 +17,7 @@ from models.users import User
 from misc.active_runs import active_runs
 from services.langgraph_service import get_langgraph_service, create_run_config
 from services.streaming_service import streaming_service
+from services.rag_service import rag_service
 from core.general_serializer import general_serializer
 
 T = TypeVar("T")
@@ -125,6 +126,91 @@ async def update_thread_metadata(session: AsyncSession, thread_id: str):
     return md
 
 
+async def inject_rag_context(
+    session: AsyncSession,
+    thread_id: str,
+    input_data: dict,
+) -> dict:
+    """
+    Inject RAG context from uploaded files into the user's message.
+    
+    If the thread has uploaded files, searches for relevant chunks 
+    and prepends context to the user's message.
+    
+    Args:
+        session: Database session
+        thread_id: Thread ID to search files in
+        input_data: Original input data with messages
+        
+    Returns:
+        Modified input_data with RAG context injected
+    """
+    try:
+        # Check if thread has files
+        has_files = await rag_service.has_files_in_thread(session, thread_id)
+        if not has_files:
+            return input_data
+        
+        # Extract user query from messages
+        messages = input_data.get("messages", [])
+        if not messages:
+            return input_data
+        
+        # Get the last human message
+        user_query = None
+        for msg in reversed(messages):
+            if msg.get("type") == "human":
+                content = msg.get("content", "")
+                if isinstance(content, str):
+                    user_query = content
+                elif isinstance(content, list) and len(content) > 0:
+                    # Handle content array format
+                    first_content = content[0]
+                    if isinstance(first_content, dict):
+                        user_query = first_content.get("text", "")
+                    elif isinstance(first_content, str):
+                        user_query = first_content
+                break
+        
+        if not user_query:
+            return input_data
+        
+        # Get relevant context from files
+        rag_context = await rag_service.get_context_for_query(
+            session, user_query, thread_id
+        )
+        
+        if not rag_context:
+            return input_data
+        
+        # Create a copy of input_data to avoid mutating original
+        modified_input = copy.deepcopy(input_data)
+        
+        # Prepend context to the last human message
+        for msg in reversed(modified_input.get("messages", [])):
+            if msg.get("type") == "human":
+                content = msg.get("content", "")
+                
+                if isinstance(content, str):
+                    msg["content"] = f"{rag_context}\n\nUser Query: {content}"
+                elif isinstance(content, list) and len(content) > 0:
+                    first_content = content[0]
+                    if isinstance(first_content, dict) and "text" in first_content:
+                        original_text = first_content.get("text", "")
+                        first_content["text"] = f"{rag_context}\n\nUser Query: {original_text}"
+                    elif isinstance(first_content, str):
+                        content[0] = f"{rag_context}\n\nUser Query: {first_content}"
+                break
+        
+        logger.info(f"Injected RAG context for thread {thread_id}")
+        return modified_input
+        
+    except Exception as e:
+        logger.warning(f"Failed to inject RAG context: {e}")
+        # Return original input if RAG fails
+        return input_data
+
+
 async def execute_run_async(
     run_id: str,
     thread_id: str,
@@ -146,6 +232,9 @@ async def execute_run_async(
     if session is None:
         maker = _get_session_maker()
         session = maker()
+
+    # Inject RAG context from uploaded files
+    input_data = await inject_rag_context(session, thread_id, input_data)
 
     # Normalize stream_mode once here for all callers/endpoints.
     # Accept "messages-tuple" as an alias of "messages".

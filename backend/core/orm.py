@@ -4,6 +4,7 @@ This module creates:
 • `Base` – the declarative base used by our models.
 • `Assistant`, `Thread`, `Run` – ORM models mirroring the bootstrap tables
   already created in ``DatabaseManager._create_metadata_tables``.
+• `FileUpload`, `FileChunk` – ORM models for file upload and RAG functionality.
 • `async_session_maker` – a factory that hands out `AsyncSession` objects
   bound to the shared engine managed by `db_manager`.
 • `get_session` – FastAPI dependency helper for routers.
@@ -15,16 +16,19 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from datetime import datetime
+from uuid import uuid4
 
 from sqlalchemy import (
     TIMESTAMP,
+    BigInteger,
     ForeignKey,
     Index,
     Integer,
     Text,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from pgvector.sqlalchemy import Vector
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import Mapped, declarative_base, mapped_column
 
@@ -172,6 +176,58 @@ class RunEvent(Base):
     __table_args__ = (
         Index("idx_run_events_run_id", "run_id"),
         Index("idx_run_events_seq", "run_id", "seq"),
+    )
+
+
+class FileUpload(Base):
+    """ORM model for uploaded files metadata."""
+
+    __tablename__ = "file_upload"
+
+    id: Mapped[str] = mapped_column(
+        Text, primary_key=True, default=lambda: str(uuid4())
+    )
+    thread_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("thread.thread_id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("user.user_id", ondelete="CASCADE"), nullable=False
+    )
+    filename: Mapped[str] = mapped_column(Text, nullable=False)
+    file_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    mime_type: Mapped[str | None] = mapped_column(Text, nullable=True)
+    chunk_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=text("now()")
+    )
+
+    __table_args__ = (
+        Index("idx_file_upload_thread", "thread_id"),
+        Index("idx_file_upload_user", "user_id"),
+        Index("idx_file_upload_unique", "thread_id", "filename", unique=True),
+    )
+
+
+class FileChunk(Base):
+    """ORM model for file chunks with embeddings stored via pgvector."""
+
+    __tablename__ = "file_chunk"
+
+    id: Mapped[str] = mapped_column(
+        Text, primary_key=True, default=lambda: str(uuid4())
+    )
+    file_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("file_upload.id", ondelete="CASCADE"), nullable=False
+    )
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding = mapped_column(Vector(1536), nullable=True)  # OpenAI embedding dimension
+    metadata_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+
+    __table_args__ = (
+        Index("idx_file_chunk_file", "file_id"),
+        Index("idx_file_chunk_unique", "file_id", "chunk_index", unique=True),
     )
 
 
