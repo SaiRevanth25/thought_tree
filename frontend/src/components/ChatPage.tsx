@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Send, Loader2, LogOut, MessageSquare, Trash2, Plus, ChevronLeft, ChevronRight, User as UserIcon, AlertCircle, Github } from 'lucide-react';
-import { getCurrentUser, createChat, streamChatMessage, parseVisualizationFromResponse, deleteChat, searchChats, getChatHistory, updateChat, APIError, type User, type ChatThread, type VisualizationData } from '../utils/api';
+import { Send, Loader2, LogOut, MessageSquare, Trash2, Plus, ChevronLeft, ChevronRight, User as UserIcon, AlertCircle, Github, Paperclip, X, File } from 'lucide-react';
+import { getCurrentUser, createChat, streamChatMessage, parseVisualizationFromResponse, deleteChat, searchChats, getChatHistory, updateChat, uploadFiles, listFiles, deleteFile, formatFileSize, APIError, type User, type ChatThread, type VisualizationData, type UploadedFile } from '../utils/api';
 import { removeToken } from '../utils/auth';
 import { StructureSelector } from './StructureSelector';
 import { VisualizationCanvas } from './VisualizationCanvas';
@@ -50,8 +50,23 @@ export function ChatPage() {
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [apiError, setApiError] = useState<string>('');
+  // File upload state
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string>('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+
+  // File upload constraints
+  const MAX_FILES = 3;
+  const MAX_FILE_SIZE_MB = 10;
+  const ALLOWED_TYPES = [
+    'application/pdf',
+    'text/plain',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'text/markdown',
+  ];
 
   useEffect(() => {
     loadUser();
@@ -101,9 +116,94 @@ export function ChatPage() {
       setMessages([]);
       setVisualizationData(null);
       setCurrentTopic('');
+      setUploadedFiles([]);
+      setUploadError('');
       await loadThreads();
     } catch (error) {
       console.error('Failed to create chat:', error);
+    }
+  };
+
+  // Load files when thread changes
+  const loadFilesForThread = async (threadId: string) => {
+    try {
+      const response = await listFiles(threadId);
+      setUploadedFiles(response.files);
+    } catch (error) {
+      console.error('Failed to load files:', error);
+      setUploadedFiles([]);
+    }
+  };
+
+  // Handle file selection
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setUploadError('');
+
+    // Validate file count
+    if (uploadedFiles.length + files.length > MAX_FILES) {
+      setUploadError(`Maximum ${MAX_FILES} files allowed per chat`);
+      return;
+    }
+
+    // Validate files
+    const validFiles: File[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      // Check type
+      if (!ALLOWED_TYPES.includes(file.type)) {
+        setUploadError(`Unsupported file type: ${file.name}. Allowed: PDF, TXT, DOCX, MD`);
+        return;
+      }
+      // Check size
+      if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+        setUploadError(`File "${file.name}" exceeds ${MAX_FILE_SIZE_MB}MB limit`);
+        return;
+      }
+      validFiles.push(file);
+    }
+
+    // Need a thread to upload files
+    let threadToUse = currentThread;
+    if (!threadToUse) {
+      try {
+        threadToUse = await createChat();
+        setCurrentThread(threadToUse);
+        await loadThreads();
+      } catch (error) {
+        console.error('Failed to create thread for file upload:', error);
+        setUploadError('Failed to create chat for file upload');
+        return;
+      }
+    }
+
+    // Upload files
+    setIsUploading(true);
+    try {
+      const uploaded = await uploadFiles(threadToUse.thread_id, validFiles);
+      setUploadedFiles(prev => [...prev, ...uploaded]);
+    } catch (error) {
+      console.error('Failed to upload files:', error);
+      setUploadError(error instanceof APIError ? error.message : 'Failed to upload files');
+    } finally {
+      setIsUploading(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  // Handle file deletion
+  const handleFileDelete = async (fileId: string) => {
+    try {
+      await deleteFile(fileId);
+      setUploadedFiles(prev => prev.filter(f => f.id !== fileId));
+    } catch (error) {
+      console.error('Failed to delete file:', error);
+      setUploadError(error instanceof APIError ? error.message : 'Failed to delete file');
     }
   };
 
@@ -116,6 +216,8 @@ export function ChatPage() {
         setMessages([]);
         setVisualizationData(null);
         setCurrentTopic('');
+        setUploadedFiles([]);
+        setUploadError('');
       }
       await loadThreads();
     } catch (error) {
@@ -130,6 +232,11 @@ export function ChatPage() {
     setCurrentTopic('');
     setStructureType('mindmap');
     setApiError('');
+    setUploadedFiles([]);
+    setUploadError('');
+    
+    // Load files for this thread
+    await loadFilesForThread(thread.thread_id);
     
     try {
       console.log(`Loading chat history for thread: ${thread.thread_id}`);
@@ -617,20 +724,91 @@ export function ChatPage() {
           </div>
 
           <div className="border-t border-slate-800 p-4">
-            <div className="flex gap-2">
+            {/* File Upload Button - Above Chat Input */}
+            <div className="mb-3">
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={loading || isUploading || uploadedFiles.length >= MAX_FILES}
+                className="flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-300 rounded-lg border border-slate-700 border-dashed transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                title={uploadedFiles.length >= MAX_FILES ? `Maximum ${MAX_FILES} files` : 'Upload file (PDF, TXT, DOCX, MD)'}
+              >
+                <Paperclip className="w-4 h-4" />
+                <span>Attach files (PDF, TXT, DOCX, MD)</span>
+                {uploadedFiles.length > 0 && (
+                  <span className="text-xs text-purple-400">({uploadedFiles.length}/{MAX_FILES})</span>
+                )}
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept=".pdf,.txt,.docx,.md,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/markdown"
+                onChange={handleFileSelect}
+                className="hidden"
+              />
+            </div>
+
+            {/* Uploaded Files Display */}
+            {uploadedFiles.length > 0 && (
+              <div className="mb-3 space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  {uploadedFiles.map((file) => (
+                    <div
+                      key={file.id}
+                      className="flex items-center gap-2 px-3 py-2 bg-slate-800 rounded-lg border border-slate-700"
+                    >
+                      <File className="w-4 h-4 text-purple-400" />
+                      <div className="flex flex-col">
+                        <span className="text-xs text-slate-300 truncate max-w-[120px]">
+                          {file.filename}
+                        </span>
+                        <span className="text-xs text-slate-500">
+                          {formatFileSize(file.file_size)} • {file.chunk_count} chunks
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => handleFileDelete(file.id)}
+                        className="p-1 hover:bg-red-500/20 rounded transition-colors"
+                        title="Remove file"
+                      >
+                        <X className="w-3 h-3 text-slate-400 hover:text-red-400" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Upload Progress */}
+            {isUploading && (
+              <div className="mb-3 flex items-center gap-2 text-sm text-purple-400">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Processing files...</span>
+              </div>
+            )}
+
+            {/* Upload Error */}
+            {uploadError && (
+              <div className="mb-3 p-2 rounded-lg bg-red-500/20 border border-red-500/50 text-red-400 text-xs">
+                {uploadError}
+              </div>
+            )}
+
+            {/* Chat Input */}
+            <div className="flex gap-2 items-center">
               <input
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-                placeholder="Enter a topic to visualize..."
+                placeholder={uploadedFiles.length > 0 ? "Ask about your files or enter a topic..." : "Enter a topic to visualize..."}
                 disabled={loading}
-                className="flex-1 bg-slate-800 text-white px-4 py-3 rounded-lg border border-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500 placeholder-slate-500"
+                className="flex-1 min-w-0 bg-slate-800 text-white px-4 py-3 rounded-lg border border-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500 placeholder-slate-500"
               />
               <button
                 onClick={handleSend}
                 disabled={loading || !input.trim()}
-                className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg font-medium hover:from-purple-700 hover:to-pink-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className="flex-shrink-0 px-4 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg font-medium hover:from-purple-700 hover:to-pink-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
               >
                 {loading ? (
                   <Loader2 className="w-5 h-5 animate-spin" />

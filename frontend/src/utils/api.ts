@@ -410,3 +410,86 @@ const isValidVisualization = (obj: any): boolean => {
   
   return false;
 };
+
+// File upload types
+export interface UploadedFile {
+  id: string;
+  thread_id: string;
+  user_id: string;
+  filename: string;
+  file_size: number;
+  mime_type: string | null;
+  chunk_count: number;
+  created_at: string;
+}
+
+export interface FileListResponse {
+  files: UploadedFile[];
+  total: number;
+}
+
+export interface FileDeleteResponse {
+  success: boolean;
+  message: string;
+  file_id: string;
+}
+
+// File upload functions
+export const uploadFiles = async (threadId: string, files: File[]): Promise<UploadedFile[]> => {
+  const formData = new FormData();
+  formData.append('thread_id', threadId);
+  
+  for (const file of files) {
+    formData.append('files', file);
+  }
+  
+  const token = getToken();
+  const response = await safeFetch(`${API_BASE_URL}/files/upload`, {
+    method: 'POST',
+    headers: {
+      'Authorization': token ? `Bearer ${token}` : '',
+    },
+    body: formData,
+  });
+  
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'File upload failed' }));
+    throw new APIError(error.detail || 'File upload failed', response.status);
+  }
+  
+  return response.json();
+};
+
+export const listFiles = async (threadId: string): Promise<FileListResponse> => {
+  const response = await safeFetch(`${API_BASE_URL}/files/${threadId}`, {
+    headers: getHeaders(),
+  });
+  
+  if (!response.ok) {
+    throw new APIError('Failed to list files', response.status);
+  }
+  
+  return response.json();
+};
+
+export const deleteFile = async (fileId: string): Promise<FileDeleteResponse> => {
+  const response = await safeFetch(`${API_BASE_URL}/files/${fileId}`, {
+    method: 'DELETE',
+    headers: getHeaders(),
+  });
+  
+  if (!response.ok) {
+    throw new APIError('Failed to delete file', response.status);
+  }
+  
+  return response.json();
+};
+
+// Format file size for display
+export const formatFileSize = (bytes: number): string => {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
