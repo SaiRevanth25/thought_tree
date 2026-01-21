@@ -1,6 +1,6 @@
 import { getToken } from './auth';
 
-const API_BASE_URL = 'http://54.174.78.20:8000/api';
+const API_BASE_URL = 'http://54.91.10.80:8000/api';
 
 // Utility function to generate UUID (with fallback for browsers that don't support crypto.randomUUID)
 const generateUUID = (): string => {
