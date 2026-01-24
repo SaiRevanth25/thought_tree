@@ -2,12 +2,9 @@
 Main module for Mindmap API.
 """
 
-import os
 from pathlib import Path
 
-from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 import sentry_sdk
@@ -95,42 +92,6 @@ def health():
 app.include_router(user_router, prefix="/api", tags=["users"])
 app.include_router(chat_router, prefix="/api", tags=["chats"])
 app.include_router(file_router, prefix="/api", tags=["files"])
-
-# Serve static frontend files in production
-if STATIC_DIR.exists():
-    logger.info(f"Static directory found at {STATIC_DIR}, mounting frontend files")
-    
-    # Mount static assets (JS, CSS, images)
-    assets_dir = STATIC_DIR / "assets"
-    if assets_dir.exists():
-        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
-    
-    # Catch-all route for SPA - must be after API routes
-    @app.get("/{full_path:path}")
-    async def serve_spa(request: Request, full_path: str):
-        """Serve the SPA for all non-API routes."""
-        # Check if it's a static file request
-        static_file = STATIC_DIR / full_path
-        if static_file.exists() and static_file.is_file():
-            return FileResponse(static_file)
-        # Return index.html for client-side routing
-        index_html = STATIC_DIR / "index.html"
-        if index_html.exists():
-            return FileResponse(index_html)
-        # Fallback if index.html doesn't exist
-        logger.error(f"Static files not found. Expected directory: {STATIC_DIR}")
-        return {"error": "Frontend not built. Run 'npm run build' in the frontend directory."}
-else:
-    logger.warning(f"Static directory not found at {STATIC_DIR}. Frontend will not be served.")
-    
-    @app.get("/{full_path:path}")
-    async def frontend_not_available(request: Request, full_path: str):
-        """Fallback when frontend is not built."""
-        return {
-            "error": "Frontend not available",
-            "message": "Frontend files not found. Make sure to build the frontend and copy to backend/static",
-            "expected_path": str(STATIC_DIR)
-        }
 
 
 if __name__ == "__main__":

@@ -169,4 +169,4 @@ backend/.env
 *.db*
 
 
-frontend/node_modules/
+frontend/
