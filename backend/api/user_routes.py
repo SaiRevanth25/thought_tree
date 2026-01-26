@@ -193,7 +193,7 @@ async def forgot_password(
         )
 
     # Generate 6-character verification code
-    code = password_reset_store.create_reset_code(email=body.email)
+    code = await password_reset_store.create_reset_code(email=body.email)
 
     # Send the code via email
     email_sent = await send_password_reset_code(
@@ -229,7 +229,7 @@ async def verify_reset_code(
             detail="The user with this email does not exist in the system.",
         )
 
-    if not password_reset_store.verify_code(email=body.email, code=body.code):
+    if not await password_reset_store.verify_code(email=body.email, code=body.code):
         raise HTTPException(
             status_code=400,
             detail="Invalid or expired verification code.",
@@ -252,7 +252,7 @@ async def reset_password(body: NewPassword, session=Depends(get_session)) -> Mes
         )
 
     # Check if the email has been verified
-    if not password_reset_store.consume_verified(email=body.email):
+    if not await password_reset_store.consume_verified(email=body.email):
         raise HTTPException(
             status_code=400,
             detail="Please verify your email with the code first.",

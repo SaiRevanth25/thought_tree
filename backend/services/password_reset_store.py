@@ -1,7 +1,9 @@
 """
 In-memory store for password reset verification codes.
 Codes expire after a configurable time and are cleaned up automatically.
+Thread-safe for concurrent access.
 """
+import asyncio
 import logging
 import secrets
 import string
@@ -25,12 +27,14 @@ class PasswordResetStore:
     """
     In-memory store for managing password reset verification codes.
     Codes are 6 characters (alphanumeric) and expire after a configurable time.
+    Thread-safe using asyncio Lock.
     """
 
     def __init__(self, expiry_minutes: int = 10):
         self._store: Dict[str, ResetCodeEntry] = {}  # email -> ResetCodeEntry
         self._code_to_email: Dict[str, str] = {}  # code -> email (for quick lookup)
         self.expiry_minutes = expiry_minutes
+        self._lock = asyncio.Lock()  # Thread-safe lock for concurrent access
 
     def _generate_code(self) -> str:
         """Generate a 6-character alphanumeric code (uppercase for clarity)."""
@@ -40,7 +44,7 @@ class PasswordResetStore:
         return "".join(secrets.choice(characters) for _ in range(6))
 
     def _cleanup_expired(self) -> None:
-        """Remove expired entries."""
+        """Remove expired entries (must be called within lock)."""
         now = datetime.now(timezone.utc)
         expired_emails = [
             email for email, entry in self._store.items() if entry.expires_at < now
@@ -51,82 +55,88 @@ class PasswordResetStore:
                 self._code_to_email.pop(entry.code, None)
                 logger.info(f"Cleaned up expired code for {email}")
 
-    def create_reset_code(self, email: str) -> str:
+    async def create_reset_code(self, email: str) -> str:
         """
         Create a new reset code for the given email.
         If a code already exists for this email, it will be replaced.
+        Thread-safe.
         """
-        self._cleanup_expired()
+        async with self._lock:
+            self._cleanup_expired()
 
-        # Remove existing code for this email if any
-        if email in self._store:
-            old_entry = self._store.pop(email)
-            self._code_to_email.pop(old_entry.code, None)
+            # Remove existing code for this email if any
+            if email in self._store:
+                old_entry = self._store.pop(email)
+                self._code_to_email.pop(old_entry.code, None)
+                logger.info(f"Invalidated previous code for {email}")
 
-        # Generate new code (ensure uniqueness)
-        code = self._generate_code()
-        while code in self._code_to_email:
+            # Generate new code (ensure uniqueness)
             code = self._generate_code()
+            while code in self._code_to_email:
+                code = self._generate_code()
 
-        now = datetime.now(timezone.utc)
-        entry = ResetCodeEntry(
-            email=email,
-            code=code,
-            created_at=now,
-            expires_at=now + timedelta(minutes=self.expiry_minutes),
-            verified=False,
-        )
+            now = datetime.now(timezone.utc)
+            entry = ResetCodeEntry(
+                email=email,
+                code=code,
+                created_at=now,
+                expires_at=now + timedelta(minutes=self.expiry_minutes),
+                verified=False,
+            )
 
-        self._store[email] = entry
-        self._code_to_email[code] = email
-        logger.info(f"Created reset code for {email}")
+            self._store[email] = entry
+            self._code_to_email[code] = email
+            logger.info(f"Created reset code for {email}")
 
-        return code
+            return code
 
-    def verify_code(self, email: str, code: str) -> bool:
+    async def verify_code(self, email: str, code: str) -> bool:
         """
         Verify the code for the given email.
         Returns True if valid, False otherwise.
         Marks the code as verified if successful.
+        Thread-safe.
         """
-        self._cleanup_expired()
+        async with self._lock:
+            self._cleanup_expired()
 
-        entry = self._store.get(email)
-        if not entry:
-            logger.warning(f"No reset code found for {email}")
-            return False
+            entry = self._store.get(email)
+            if not entry:
+                logger.warning(f"No reset code found for {email}")
+                return False
 
-        if entry.code.upper() != code.upper():
-            logger.warning(f"Invalid code for {email}")
-            return False
+            if entry.code.upper() != code.upper():
+                logger.warning(f"Invalid code for {email}")
+                return False
 
-        if entry.expires_at < datetime.now(timezone.utc):
-            logger.warning(f"Expired reset code for {email}")
-            return False
+            if entry.expires_at < datetime.now(timezone.utc):
+                logger.warning(f"Expired reset code for {email}")
+                return False
 
-        # Mark as verified
-        entry.verified = True
-        logger.info(f"Code verified for {email}")
-        return True
+            # Mark as verified
+            entry.verified = True
+            logger.info(f"Code verified for {email}")
+            return True
 
-    def consume_verified(self, email: str) -> bool:
+    async def consume_verified(self, email: str) -> bool:
         """
         Check if email is verified and remove the entry.
         Returns True if was verified, False otherwise.
         Used when actually resetting the password.
+        Thread-safe.
         """
-        self._cleanup_expired()
-        entry = self._store.get(email)
-        if entry and entry.verified:
-            self._store.pop(email, None)
-            self._code_to_email.pop(entry.code, None)
-            logger.info(f"Consumed verified code for {email}")
-            return True
-        return False
+        async with self._lock:
+            self._cleanup_expired()
+            entry = self._store.get(email)
+            if entry and entry.verified:
+                self._store.pop(email, None)
+                self._code_to_email.pop(entry.code, None)
+                logger.info(f"Consumed verified code for {email}")
+                return True
+            return False
 
     def get_email_by_code(self, code: str) -> Optional[str]:
         """Get email associated with a code (for verification endpoint)."""
-        self._cleanup_expired()
         return self._code_to_email.get(code.upper())
 
 
