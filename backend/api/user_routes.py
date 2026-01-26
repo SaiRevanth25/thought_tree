@@ -17,7 +17,6 @@ from core.security import (
     get_password_hash,
     verify_password,
     create_access_token,
-    verify_password_reset_token,
 )
 from models.users import (
     Message,
@@ -28,7 +27,12 @@ from models.users import (
     UserBase,
     Token,
     NewPassword,
+    ForgotPasswordRequest,
+    ForgotPasswordResponse,
+    VerifyResetCodeRequest,
 )
+from services.password_reset_store import password_reset_store
+from services.email_service import send_password_reset_code
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -172,20 +176,93 @@ async def login_access_token(
     )
 
 
-@router.patch("/reset-password/", response_model=Message)
-async def reset_password(body: NewPassword, session=Depends(get_session)) -> Message:
+@router.post("/forgot-password/", response_model=ForgotPasswordResponse)
+async def forgot_password(
+    body: ForgotPasswordRequest, session=Depends(get_session)
+) -> ForgotPasswordResponse:
     """
-    Reset password
+    Forgot password - Request a password reset verification code.
+    User provides their email and receives a 6-character code via email.
     """
     service = UserService(session)
-    email = await verify_password_reset_token(token=body.token)
-    if not email:
-        raise HTTPException(status_code=400, detail="Invalid token")
-    user = await service.get_user_by_email(email=email)
+    user = await service.get_user_by_email(email=body.email)
     if not user:
         raise HTTPException(
             status_code=404,
             detail="The user with this email does not exist in the system.",
+        )
+
+    # Generate 6-character verification code
+    code = password_reset_store.create_reset_code(email=body.email)
+
+    # Send the code via email
+    email_sent = await send_password_reset_code(
+        to_email=body.email,
+        code=code,
+        user_name=user.name,
+    )
+
+    if email_sent:
+        return ForgotPasswordResponse(
+            message="Verification code has been sent to your email. Please check your inbox.",
+        )
+    else:
+        # Email service not configured - return code in response (for development)
+        return ForgotPasswordResponse(
+            message=f"Email service not configured. Your code is: {code} (valid for 10 minutes)",
+        )
+
+
+@router.post("/verify-reset-code/", response_model=Message)
+async def verify_reset_code(
+    body: VerifyResetCodeRequest, session=Depends(get_session)
+) -> Message:
+    """
+    Verify the 6-character reset code sent to user's email.
+    Must be called before reset-password endpoint.
+    """
+    service = UserService(session)
+    user = await service.get_user_by_email(email=body.email)
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="The user with this email does not exist in the system.",
+        )
+
+    if not password_reset_store.verify_code(email=body.email, code=body.code):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid or expired verification code.",
+        )
+
+    return Message(message="Code verified successfully.")
+
+
+@router.patch("/reset-password/", response_model=Message)
+async def reset_password(body: NewPassword, session=Depends(get_session)) -> Message:
+    """
+    Reset password after verifying the code.
+    """
+    service = UserService(session)
+    user = await service.get_user_by_email(email=body.email)
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="The user with this email does not exist in the system.",
+        )
+
+    # Check if the email has been verified
+    if not password_reset_store.consume_verified(email=body.email):
+        raise HTTPException(
+            status_code=400,
+            detail="Please verify your email with the code first.",
+        )
+
+    # Check if new password is the same as the old password
+    if verify_password(body.new_password, user.password):
+        raise HTTPException(
+            status_code=400,
+            detail="New password cannot be the same as the old password.",
         )
 
     hashed_password = get_password_hash(password=body.new_password)

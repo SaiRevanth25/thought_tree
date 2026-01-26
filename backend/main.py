@@ -2,8 +2,6 @@
 Main module for Mindmap API.
 """
 
-from pathlib import Path
-
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,9 +17,6 @@ from api.file_routes import router as file_router
 import logging
 
 logger = logging.getLogger(__name__)
-
-# Static files directory (built frontend)
-STATIC_DIR = Path(__file__).parent / "static"
 
 
 async def startup_event():

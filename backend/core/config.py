@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     OR_GOOGLE_MODEL: str = "google/gemini-2.5-pro"
 
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8
+    EMAIL_RESET_TOKEN_EXPIRE_HOURS: int = 1  # Password reset token expires in 1 hour
 
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="allow"
@@ -54,6 +55,15 @@ class Settings(BaseSettings):
     # RAG settings
     TOP_K_RESULTS: int = 3
     SIMILARITY_THRESHOLD: float = 0.5
+
+    # SMTP Email settings
+    SMTP_HOST: str
+    SMTP_PORT: int
+    SMTP_USER: str
+    SMTP_PASSWORD: str
+    SMTP_FROM_EMAIL: str
+    SMTP_USE_TLS: bool
+    SMTP_START_TLS: bool
 
 
 settings = Settings()
