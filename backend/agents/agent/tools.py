@@ -1,7 +1,7 @@
 """
 This module provides tools for the complete workflow
 """
-
+import jsond
 import structlog
 from typing import Any, Callable
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -10,6 +10,7 @@ from agents.agent.prompts import (
     MINDMAP_PROMPT,
     SEQUENCE_PROMPT,
     MODIFICATION_PROMPT,
+    MOD_PROMPT_NODE,
     KNOWLEDGE_GRAPH_PROMPT,
     TIMELINE_PROMPT,
 )
@@ -121,9 +122,36 @@ async def modify_visualization(current_json: str, request: str) -> Any:
     clean_content = response.content.replace("```json", "").replace("```", "").strip()
     return clean_content
 
+async def modify_node(node_content: str, request: str) -> Any:
+    """
+    Modifies an existing node content (Mindmap, Graph, or Sequence).
+    Changes the content present in the selected node as per the users' request.
+    Args:
+        node_content: The stringified JSON of the current state.
+        request: The user's change request.
+    """
+    mod_prompt = MOD_PROMPT_NODE.replace(
+        "{INSERT_CURRENT_JSON_DATA_HERE}", str(node_content)
+    )
+    mod_prompt_node = mod_prompt.replace("{REQUEST}", request)
+
+    agent = load_chat_model(settings.GEMINI_MODEL)
+    logger.info(f"Modifying node content")
+    response = await agent.ainvoke(
+        [
+            SystemMessage(content="Follow the user message"),
+            HumanMessage(content=mod_prompt_node),
+        ]
+    )
+    # Strip markdown code blocks if the model accidentally includes them
+    clean_content = response.content.replace("```json", "").replace("```", "").strip()
+    clean_content = json.loads(clean_content)["content"]
+    return clean_content
+
 
 TOOLS: list[Callable[..., Any]] = [
     create_mindmap,
+    modify_node,
     modify_visualization,
     create_sequence_diagram,
     create_knowledge_graph,

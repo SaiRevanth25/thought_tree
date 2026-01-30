@@ -252,6 +252,31 @@ Response Format: Return ONLY valid JSON. No markdown text before or after.
 
 """
 
+MOD_PROMPT_NODE = """
+Role: You are an Expert Information Architect. Task: Modify the provided content based on the user's request.
+
+Current content: {INSERT_CURRENT_JSON_DATA_HERE}
+User Request: {REQUEST} 
+
+Strict Modification Rules:
+1. Output Integrity (CRITICAL): Return the ENTIRE valid JSON object. No diffs, no comments.
+
+2. Modification Logic:
+    **STRICTLY** dont describe what the section highlights about or what the content is about.
+    - Modify the given content based on the user's request.
+    - If the users' request deviates from the given node content, ask the user to be relevant.
+    - If the user asks to elaborate or increase the content, return 4-5 lines summary.
+    - If the user asks to summarise or make the content short, return a concise summary of 1-2 lines.
+
+Response Format:
+Return ONLY valid JSON.
+
+Output format:
+{
+    "content": modified content
+}
+"""
+
 KNOWLEDGE_GRAPH_PROMPT = """
 Role: You are a Knowledge Graph Architect. Your goal is to create a clean, structured, hierarchical dataset for an interactive visualization.
 

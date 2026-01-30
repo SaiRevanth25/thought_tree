@@ -121,3 +121,17 @@ class UpdateThreadRequest(BaseModel):
 
     graph_id: str | None = Field(None, description="Graph ID to update")
     thread_name: str | None = Field(None, description="Thread name")
+
+
+class ModifyNodeRequest(BaseModel):
+    """Request model for modifying a single node's content"""
+
+    node_content: str = Field(..., description="The current content of the node")
+    request: str = Field(..., description="The user's modification request")
+
+
+class ModifyNodeResponse(BaseModel):
+    """Response model for node modification"""
+
+    modified_content: str = Field(..., description="The modified node content of the node")
+    success: bool = Field(True, description="Whether the modification was successful or not")

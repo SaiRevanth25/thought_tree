@@ -28,6 +28,8 @@ from models.threads import (
     ThreadSearchRequest,
     ThreadSearchResponse,
     UpdateThreadRequest,
+    ModifyNodeRequest,
+    ModifyNodeResponse,
 )
 
 from models.runs import (
@@ -46,6 +48,7 @@ from misc.utils import (
 from services.langgraph_service import get_langgraph_service, create_thread_config
 from services.streaming_service import streaming_service
 from utils.user_utils import get_current_user
+from agents.agent.tools import modify_node
 
 router = APIRouter()
 
@@ -857,3 +860,37 @@ async def cancel_run_endpoint(
     return Run.model_validate(
         {c.name: getattr(run_orm, c.name) for c in run_orm.__table__.columns}
     )
+
+
+@router.post("/chat/modify-node", response_model=ModifyNodeResponse)
+async def modify_node_content(
+    request: ModifyNodeRequest,
+    user: User = Depends(get_current_user),
+):
+    """
+    Modify a single node's content using the modify_node tool.
+    
+    This endpoint directly invokes the modify_node tool to change 
+    the content of a selected node based on the user's request.
+    """
+    try:
+        logger.info(f"[modify_node_content] user={user.user_id} request={request.request}...")
+        
+        # Call the modify_node tool directly
+        modified_content = await modify_node(
+            node_content=request.node_content,
+            request=request.request,
+        )
+        
+        logger.info(f"[modify_node_content] successfully modified node for user={user.user_id}")
+        
+        return ModifyNodeResponse(
+            modified_content=modified_content,
+            success=True,
+        )
+    except Exception as e:
+        logger.exception(f"[modify_node_content] error for user={user.user_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to modify node content: {str(e)}",
+        )
