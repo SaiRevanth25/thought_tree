@@ -37,7 +37,7 @@ async def verify_password_reset_token(token: str) -> str | None:
 
 
 def generate_password_reset_token(email: str) -> str:
-    delta = timedelta(hours=settings.EMAIL_RESET_TOKEN_EXPIRE_HOURS)
+    delta = timedelta(minutes=settings.EMAIL_RESET_TOKEN_EXPIRE_MINUTES)
     now = datetime.now(timezone.utc)
     expires = now + delta
     exp = expires.timestamp()

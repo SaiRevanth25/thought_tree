@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     OR_GOOGLE_MODEL: str = "google/gemini-2.5-pro"
 
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8
-    EMAIL_RESET_TOKEN_EXPIRE_HOURS: int = 1  # Password reset token expires in 1 hour
+    EMAIL_RESET_TOKEN_EXPIRE_MINUTES: int = 10  # Password reset token expires in 10 MINUTES
 
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="allow"
